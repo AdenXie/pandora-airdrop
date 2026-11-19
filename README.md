@@ -40,7 +40,7 @@ LSPosed 兼容模块在会话期间对小米互传隐藏 Wi‑Fi 被关闭的事
 
 ## 安装
 
-1. 准备三星 S26 Ultra 的 WLAN 固件（本仓库不提供），放到手机 `/sdcard/Download/s26u-amss20.bin`，见 [firmware/README.md](firmware/README.md)。
+1. 准备三星 S26 Ultra 的 WLAN 固件（本仓库不提供），放到手机 `/sdcard/Download/s26u-amss20.bin`。最简单的办法是在电脑上运行 `python firmware/get_amss20.py --push`：它从三星官方服务器只下载几 MB，还原并校验固件后用 adb 推送到手机。详见 [firmware/README.md](firmware/README.md)。
 2. 在 KernelSU 中安装发布页的 `pandora-airdrop-vX.Y.Z.zip`。安装器会校验机型、内核、原厂驱动和固件，并自动安装 LSPosed 兼容模块。
 3. 首次安装：在 LSPosed 中启用「Pandora XOS 小米互传兼容」，作用域保持默认（小米互传、系统分享），然后重启。
 

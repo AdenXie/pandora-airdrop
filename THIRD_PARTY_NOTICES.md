@@ -15,6 +15,7 @@
 | `compat/stubs/` | Xposed API 的编译期桩（只含接口签名，不打包进 APK） | Apache-2.0（XposedBridge API） |
 | `module/` | 本项目的 KernelSU 模块脚本，结构参考 houji-airdrop 的 `runtime/owly-xos/ksu` | 本项目代码，GPL-2.0-only |
 | `firmware/stream_vendor.py` | 改写自 houji-airdrop `firmware-acquisition/acquire-ap.py`，运行时调用 samloader | 已获 houji-airdrop 作者许可在本仓库发布；与上游一致，未授予开源许可；运行时调用的 samloader 为 GPL-3.0+，不随本仓库分发 |
+| `firmware/get_amss20.py`、`firmware/make_recipe.py`、`firmware/recipe/` | 本项目（独立实现三星 FUS 协议，不含 samloader 代码；位置文件只有偏移和长度，不含三星数据） | 本项目代码，GPL-2.0-only |
 | `tools/`、`docs/` | 本项目 | 本项目代码，GPL-2.0-only |
 
 ## 安装包中的二进制
@@ -45,4 +46,4 @@ houji-airdrop 的说明写明，其自有新增文件"暂未另行授予统一�
 
 ## 本项目自有代码
 
-`module/`、`compat/` 的非移植部分、`tools/`、`docs/` 以 GPL-2.0-only 发布，与驱动部分一致，全文见根目录 [LICENSE](LICENSE)。根目录 LICENSE 只覆盖这些部分和其他标明 GPL-2.0 的文件，不覆盖上面的 houji-airdrop 衍生部分。
+`module/`、`compat/` 的非移植部分、`firmware/` 下除 `stream_vendor.py` 以外的脚本与位置文件、`tools/`、`docs/` 以 GPL-2.0-only 发布，与驱动部分一致，全文见根目录 [LICENSE](LICENSE)。根目录 LICENSE 只覆盖这些部分和其他标明 GPL-2.0 的文件，不覆盖上面的 houji-airdrop 衍生部分。

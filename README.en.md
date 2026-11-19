@@ -40,7 +40,7 @@ During a session, the LSPosed compat module hides from Xiaomi Share the fact tha
 
 ## Install
 
-1. Get the Samsung S26 Ultra WLAN firmware (not provided here) and put it on the phone at `/sdcard/Download/s26u-amss20.bin`. See [firmware/README.md](firmware/README.md).
+1. Get the Samsung S26 Ultra WLAN firmware (not provided here) and put it on the phone at `/sdcard/Download/s26u-amss20.bin`. The easiest way is to run `python firmware/get_amss20.py --push` on a computer: it downloads only a few MB from Samsung's official server, rebuilds and verifies the file, and pushes it with adb. See [firmware/README.md](firmware/README.md).
 2. Install `pandora-airdrop-vX.Y.Z.zip` from the releases page in KernelSU. The installer checks the device, kernel, stock driver and firmware, and installs the LSPosed compat module for you.
 3. First install only: enable "Pandora XOS 小米互传兼容" in LSPosed, keep the default scope (Xiaomi Share and the system share sheet), then reboot.
 
