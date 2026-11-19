@@ -12,7 +12,7 @@ Inspired by [houji-airdrop](https://github.com/ha0xin/houji-airdrop), a similar 
 |---|---|
 | iPhone → Xiaomi receive | ✅ Works, 45–53 MB/s measured on large files |
 | Live Photo | ✅ Merged into a Xiaomi motion photo automatically (front-camera video is re-encoded to remove mirroring, the way the Xiaomi Share iOS app does it; rear-camera video is kept lossless) |
-| Xiaomi → iPhone send | ⚠ Not verified yet |
+| Xiaomi → iPhone send | ✅ Works (tested with iPhone 17 Pro Max, iOS 27.3) |
 | Live Photos in HEIC | ❌ Not merged; you receive the photo and the video as two files |
 | First large-file send | The iPhone may show "Waiting" for 30–40 s before the transfer prompt appears. The cause is on the iPhone side and is not solved yet |
 
