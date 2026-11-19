@@ -1,0 +1,21 @@
+# build outputs
+dist/
+*.zip
+*.ko
+*.o
+*.apk
+*.jks
+owly-xosd
+wonder-init
+
+# proprietary blobs must never be committed
+*.bin
+*.img
+*.mbn
+
+# local inputs / logs
+inputs/
+logs/
+*.log
+*.pcap
+__pycache__/
