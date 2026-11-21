@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# Shared constants and helpers for the pandora AirDrop KSU module (sourced by customize/service/action/uninstall).
+# Shared constants and helpers for the Xiaomi 17 / 17 Pro AirDrop KSU module (sourced by customize/service/action/uninstall).
 # Nothing here writes to any partition: the runtime lives in /data/local/tmp/xos, the S26U firmware is a
 # bind mount made only while an AirDrop session is open, and every kernel module is insmod'ed at runtime.
 
@@ -7,9 +7,11 @@ NATIVE_DIR=/data/local/tmp/xos/native
 RUNTIME_DIR=/data/local/tmp/xos/owly
 MODULE_LOG=$NATIVE_DIR/module.log
 
-EXPECTED_DEVICE=pandora
+# Verified on both Xiaomi 17 (pudding) and 17 Pro (pandora); the WLAN firmware,
+# stock driver build, MIShare version and 6.12.69 kernel ABI are the same on both.
+SUPPORTED_DEVICES="pandora pudding"
 EXPECTED_SDK=37
-EXPECTED_KERNEL=6.12.69-android16-6-g43b5ab7e247d-abogki561813157-4k
+EXPECTED_KERNEL_PREFIX=6.12.69
 STOCK_AMSS=/vendor/firmware_mnt/image/peach/amss20.bin
 STOCK_AMSS_SHA=8d0ac09be5489393ed23c19ace3ea9e44ceff5e29c4bb75ea3d22acf26d92e8f
 STOCK_KO=/vendor_dlkm/lib/modules/qca_cld3_peach_v2.ko
@@ -48,6 +50,9 @@ radio_state() { cat "$NATIVE_DIR/status" 2>/dev/null || echo UNKNOWN; }
 # Stop the XosBridge supervisor. On SIGTERM it stops the bridge and runs "radio.sh restore" itself (stock
 # driver, stock firmware, Wi-Fi as it was), so wait for its lock to be released, up to about 60 s.
 stop_bridge() {
+ # First install: nothing has been deployed yet, and flock cannot create the lock
+ # file in a missing directory (the installer would wait 60 s and then abort).
+ [ -d "$NATIVE_DIR" ] || return 0
  p=$(pid_from "$NATIVE_DIR/supervisor.pid" bridge-supervisor.sh) && kill -TERM "$p" 2>/dev/null
  p=$(pid_from "$NATIVE_DIR/bridge.pid" 'XosBridge') && kill -TERM "$p" 2>/dev/null
  i=0

@@ -8,7 +8,7 @@ DIR holds the built binaries under these names:
   owly-xosd  wonder-init  xos-bridge.zip  Pandora-XOS-Compat.apk
 Without --firmware the zip carries no Samsung firmware (the form that may be redistributed); the installer then
 looks for the user's own copy on the phone. Each input is compared with the SHA-256 of the build verified on a
-Xiaomi 17 Pro on 2026-11-19; a mismatch is a warning, or an error with --strict.
+Xiaomi 17 / 17 Pro on 2026-11-21; a mismatch is a warning, or an error with --strict.
 """
 import argparse
 import hashlib
@@ -24,15 +24,15 @@ FW_SHA = '71fc5c2eb2df048b6c4b494564cfbef730db879a3d8b4426c31ad23b5d448860'
 
 # payload path -> SHA-256 of the build tested on the phone
 BINARIES = {
-    'qca_cld3_peach_v2.ko': 'f3c3546426dfcae878b17f23424820d8401ebde8fcc920eb91b9da08d3f2abbb',
-    'wonder.ko': '6d67be07d74c84344bba7eda2a84e267bc2f24e1fced8265aadec82fad840abe',
-    'pandora_wonder_bridge.ko': '46e4ad7a425b0b7530431407b23a94fa4988a292db043ca50ccc6ea65dc39ceb',
-    'pandora_mhi_fw.ko': 'e858a831e08bb7d849900da92923633b8b97a21de7d918824becd9e97319541b',
-    'owly-xosd': '631c3db4b6153e1c721559823ad1941c486af5a55c42ea994badb8253966154c',
-    'wonder-init': '7e8516d73559a8dc25e20705289d8586446b3d0063b48e8c783b83e28bbe213a',
-    'xos-bridge.zip': 'c61aeefd5c203140692403dab8a0e556f0cd2bdff41af3660bbb253641744b03',
+    'qca_cld3_peach_v2.ko': 'efb43ed8364d1c5b683baf84f7207561525114e1b7628ea763041eaa7b040173',
+    'wonder.ko': 'f80f6d8ae9da4df1db3cdc995a283da01d83d09d459c6d3823da25df88bb65ac',
+    'pandora_wonder_bridge.ko': '44fc8cc3aa8677503272abc48757299c5d29e6fd9fd5fad0f480fa21e582cd48',
+    'pandora_mhi_fw.ko': '02484b332148f09241f02a2f4158075572941d6d3c9065308a3be627a53d698c',
+    'owly-xosd': '9da5afa0ef3fa717cb66b4e9d9663c7cdddba61cbd5ca79678e9f839edbbc4f8',
+    'wonder-init': '29d9d71fbdd5e0333e41377c1e5128c6c8cb888cbdc0563029a39cdf44a1cbf7',
+    'xos-bridge.zip': 'ccc264c972decaeffac4bf6ff207a5209f58ee0c74fb7a212d7ddd3a343e015e',
 }
-APK = ('Pandora-XOS-Compat.apk', '5d8a3346a8ff3e5ec9039a38a019a562d5f0bc73692c8c3a4f419a37fc31f689')
+APK = ('Pandora-XOS-Compat.apk', '48121eed5dc761b817c57352e37fb9232d62a2d45363d88a3b1e7bd7efd3f2c8')
 # shell scripts that radio.sh's installation.sha256 covers, taken from the runtime source dir
 RUNTIME_SCRIPTS = ['radio.sh', 'bridge-supervisor.sh']
 MODULE_SCRIPTS = ['customize.sh', 'service.sh', 'action.sh', 'uninstall.sh', 'common.sh']

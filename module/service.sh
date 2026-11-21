@@ -5,7 +5,7 @@ MODDIR=${0%/*}
 . "$MODDIR/common.sh"
 [ -n "$BB" ] || exit 1
 
-BASE_DESC="小米 17 Pro 原生 AirDrop：iPhone 隔空投送到小米互传，Live Photo 合成动态照片。不修改系统分区。"
+BASE_DESC="小米 17 系列原生 AirDrop：iPhone 隔空投送到小米互传，Live Photo 合成动态照片。不修改系统分区。"
 set_desc() {
  awk -v d="$1 $BASE_DESC" '/^description=/ { print "description=" d; next } { print }' \
   "$MODDIR/module.prop" > "$MODDIR/module.prop.tmp" && mv "$MODDIR/module.prop.tmp" "$MODDIR/module.prop"
@@ -26,12 +26,15 @@ trim_log "$NATIVE_DIR/owly-bridge.log"
 mlog "boot: service start"
 
 # Never load our driver after an OTA changed the kernel or the stock Wi-Fi driver/firmware.
-if [ "$(uname -r)" != "$EXPECTED_KERNEL" ]; then
+case "$(uname -r)" in
+"$EXPECTED_KERNEL_PREFIX"*) ;;
+*)
  restore_settings_only
  mlog "kernel changed to $(uname -r); disabled"
  set_desc "[⚠ 已自动停用：内核已变更]"
  exit 0
-fi
+ ;;
+esac
 j=0
 while [ "$j" -lt 30 ] && [ ! -r "$BUILD_ID_PATH" ]; do j=$((j + 1)); sleep 1; done
 if [ "$(sha_of "$BUILD_ID_PATH")" != "$STOCK_NOTE_SHA" ] || [ "$(sha_of "$STOCK_AMSS")" != "$STOCK_AMSS_SHA" ]; then

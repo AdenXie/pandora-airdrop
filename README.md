@@ -1,10 +1,10 @@
-# 小米 17 Pro 原生 AirDrop
+# 小米 17 系列 原生 AirDrop
 
 中文 | [English](README.en.md)
 
-让小米 17 Pro（pandora）的小米互传直接接收 iPhone 的隔空投送。不需要 Mac、不需要小米互传 iOS 版；iPhone 端照常点「隔空投送」，选中这台小米即可。
+让小米 17 / 17 Pro（pudding / pandora）的小米互传直接接收 iPhone 的隔空投送。不需要 Mac、不需要小米互传 iOS 版；iPhone 端照常点「隔空投送」，选中这台小米即可。
 
-灵感来源于 [houji-airdrop](https://github.com/ha0xin/houji-airdrop)（小米 14 的同类项目）移植到小米 17 Pro 的硬件与系统上。
+灵感来源于 [houji-airdrop](https://github.com/ha0xin/houji-airdrop)（小米 14 的同类项目）移植到小米 17 系列（pudding / pandora）的硬件与系统上。
 
 ## 当前状态
 
@@ -20,10 +20,12 @@
 
 只支持以下组合，不符合时安装器会直接中止，不做任何改动：
 
-- 小米 17 Pro（`pandora`），HyperOS OS4.0.6.0.XBLCNXM（Android 17，SDK 37）
-- 内核 `6.12.69-android16-6-g43b5ab7e247d-abogki561813157-4k`
+- 小米 17（`pudding`）或小米 17 Pro（`pandora`），HyperOS OS4.0.6.x（Android 17，SDK 37）
+- 内核 6.12.69（按前缀校验，两机的原厂或自编译 6.12.69 内核均可）
 - KernelSU（已在 LKM 模式下测试）+ LSPosed
-- 小米互传 5.4.1（其他版本 AirDrop 应可用，Live Photo 合成可能失效）
+- 小米互传 5.4.1 / 5.5.0（其他版本 AirDrop 应可用，Live Photo 合成可能失效）
+
+两机的 WLAN 固件、原厂驱动、互传版本与内核 ABI 相同，模块共用同一套二进制。
 
 ## 原理
 

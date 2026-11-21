@@ -66,3 +66,14 @@ AWDL action 帧能上空口，但单播数据帧每帧重传约 16 次、对方�
 - 大文件首次发送时 iPhone 会等待 30–40 秒。抓包显示 iPhone 处于 AWDL 省电的稀疏信道序列，保活 ping 无效，原因仍在排查。
 - 固件断言后 SSR 重新初始化失败（-16），目前只能重启恢复。补丁 0007 消除了已知的触发路径。
 - 8 个槽位全部占满的压力测试尚未在新驱动上复测。
+
+## 10. 小米 17（pudding）
+
+- 与 17 Pro 共用 WLAN 固件（`8d0ac09b…`）、原厂驱动（build-id `e2db5a4c…`）、小米互传
+  5.4.1/5.5.0 和 6.12.69 内核 KMI，因此同一套二进制可直接用于两机；安装器按
+  `ro.product.device` 接受 `pudding` 与 `pandora`。
+- 编译时 `MODNAME` 会泄漏到 `MULTI_IF_NAME`：`MODNAME=qca_cld3_peach_v2` 使驱动去读
+  `/vendor/firmware/wlan/qca_cld/qca_cld3_peach_v2/WCNSS_qcom_cfg.ini`（不存在），
+  `cfg_parse` 失败、probe 返回 -1。需同时传 `CHIP_NAME=peach_v2`。
+- 已在 pudding（OS4.0.6.0.XPCCNXM，自编译 6.12.69 内核）实测：iPhone 发现、照片接收、
+  会话结束恢复 Wi-Fi 均正常。
