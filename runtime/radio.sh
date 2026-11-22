@@ -28,6 +28,15 @@ ORIG=8d0ac09be5489393ed23c19ace3ea9e44ceff5e29c4bb75ea3d22acf26d92e8f       # st
 CANDIDATE=71fc5c2eb2df048b6c4b494564cfbef730db879a3d8b4426c31ad23b5d448860  # S26U S948BXXS6BZK1 amss20.bin
 CANDIDATE_SIZE=7364672
 NOTE=e2db5a4c55b3664d2aa3d5ce4dc24af67df31f58d88f4e65121fd5aa0b050ecd       # stock driver build-id note
+# Same GKI KMI check as module/common.sh: stock 6.12.69-android16-6-*-4k, or a locally
+# rebuilt 6.12.69 kernel that still carries the -4k page-size tag (e.g. 6.12.69-4k-g...-dirty).
+kernel_ok() {
+ case "${1%-dirty}" in
+ 6.12.69-4k|6.12.69-4k-*|6.12.69-*-4k|6.12.69-*-4k-*) return 0 ;;
+ esac
+ return 1
+}
+
 TABLE=10074
 IFACE=xos0
 # S26U peach firmware marks PASSTHRU RX with metadata BIT(30) (seen meta=40000000) = houji's EZIF contract, so
@@ -73,7 +82,7 @@ verify_files() {
  cd "$R"
  sha256sum -c installation.sha256 >/dev/null
  grep -qx "$CANDIDATE  firmware/s26u-amss20.bin" installation.sha256
- case "$(uname -r)" in 6.12.69-android16-6-*-4k) ;; *) return 1 ;; esac  # same GKI KMI check as the module
+ kernel_ok "$(uname -r)"
 }
 
 load_idle_modules() {
