@@ -28,7 +28,7 @@ BINARIES = {
     'wonder.ko': '6d67be07d74c84344bba7eda2a84e267bc2f24e1fced8265aadec82fad840abe',
     'pandora_wonder_bridge.ko': '46e4ad7a425b0b7530431407b23a94fa4988a292db043ca50ccc6ea65dc39ceb',
     'pandora_mhi_fw.ko': 'e858a831e08bb7d849900da92923633b8b97a21de7d918824becd9e97319541b',
-    'owly-xosd': '631c3db4b6153e1c721559823ad1941c486af5a55c42ea994badb8253966154c',
+    'owly-xosd': '9bb40387ac60c7a0dbb236fb60ba9ac20e1f666059e8d8ef5e27d40cad7f5420',
     'wonder-init': '7e8516d73559a8dc25e20705289d8586446b3d0063b48e8c783b83e28bbe213a',
     'xos-bridge.zip': 'c61aeefd5c203140692403dab8a0e556f0cd2bdff41af3660bbb253641744b03',
 }

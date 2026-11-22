@@ -41,7 +41,144 @@
              },
              tx_fatal: DropCount::default(),
              tx_backpressure: 0,
-@@ -1626,8 +1646,8 @@
+@@ -1084,6 +1104,32 @@
+ enum TapInject {
+     Outbound(Ipv6Packet),
+     InboundTap(Vec<u8>),
++    ReplayAnnounce(u32),
++}
++
++/// Wall clock in ms (aligns with logcat -v epoch).
++fn epoch_ms() -> u128 {
++    std::time::SystemTime::now()
++        .duration_since(std::time::UNIX_EPOCH)
++        .map(|d| d.as_millis())
++        .unwrap_or(0)
++}
++
++/// Local -> air multicast mDNS response carrying `_airdrop` records (the MIShare NSD announcement or answer).
++fn is_airdrop_mdns_multicast_response(d: &[u8]) -> bool {
++    d.len() > 60
++        && d[0] >> 4 == 6
++        && d[6] == 17
++        && d[24] == 0xff
++        && d[25] == 0x02
++        && d[39] == 0xfb
++        && u16::from_be_bytes([d[40], d[41]]) == 5353
++        && d[50] & 0x80 != 0
++        && d[52..].windows(8).any(|w| w == b"_airdrop")
++}
++
++fn is_tcp_syn(d: &[u8]) -> bool {
++    d.len() >= 54 && d[0] >> 4 == 6 && d[6] == 6 && d[53] & 0x12 == 0x02
+ }
+ 
+ /// Persistent `NETLINK_ROUTE` socket driven off the async loop by [`NeighWorker`].
+@@ -1263,6 +1309,12 @@
+     inject_tx: mpsc::UnboundedSender<TapInject>,
+     inject_rx: mpsc::UnboundedReceiver<TapInject>,
+     discovery_tasks: BTreeMap<MacAddr, JoinHandle<()>>,
++    // pandora: an iPhone whose share sheet has been open for a while browses sparsely, so the two MIShare
++    // start-up announcements are often missed. Re-send its latest `_airdrop` announcement on a decaying
++    // schedule until the first inbound TCP connection (the iPhone's /Discover) or 30 s.
++    announce: Option<Ipv6Packet>,
++    announce_started: bool,
++    announce_done: bool,
+ }
+ 
+ impl Tap {
+@@ -1320,12 +1372,23 @@
+             inject_tx,
+             inject_rx,
+             discovery_tasks: BTreeMap::new(),
++            announce: None,
++            announce_started: false,
++            announce_done: false,
+         })
+     }
+ 
+     fn handle_inject(&mut self, injected: TapInject) -> Option<Ipv6Packet> {
+         match injected {
+             TapInject::Outbound(packet) => Some(packet),
++            TapInject::ReplayAnnounce(n) => {
++                if self.announce_done {
++                    return None;
++                }
++                let p = self.announce.as_ref()?;
++                println!("OWLY_T {} announce_replay n={}", epoch_ms(), n);
++                Some(Ipv6Packet { dst: p.dst, src: p.src, data: p.data.clone() })
++            }
+             TapInject::InboundTap(eth) => {
+                 if let Err(e) = write_tap_raw(self.fd.get_ref(), self.vnet_hdr, &eth) {
+                     self.delivery_drops.record("tap mdns prompt", &e);
+@@ -1358,9 +1421,36 @@
+         if let Err(msg) = res {
+             self.rx_invalid.record("tap rx", &msg);
+         }
++        if !self.announce_done {
++            if let Some(p) = self.pending_tx.iter().rev().find(|p| is_airdrop_mdns_multicast_response(&p.data)) {
++                self.announce = Some(Ipv6Packet { dst: p.dst, src: p.src, data: p.data.clone() });
++                if !self.announce_started {
++                    self.announce_started = true;
++                    println!("OWLY_T {} responder_first_announce", epoch_ms());
++                    let tx = self.inject_tx.clone();
++                    tokio::spawn(async move {
++                        // every second for the first 12 s, then every 2 s up to 30 s after the first announcement
++                        let gaps = std::iter::repeat(1_000u64).take(12).chain(std::iter::repeat(2_000u64).take(9));
++                        for (i, g) in gaps.enumerate() {
++                            tokio::time::sleep(Duration::from_millis(g)).await;
++                            if tx.send(TapInject::ReplayAnnounce(i as u32 + 1)).is_err() {
++                                return;
++                            }
++                        }
++                    });
++                }
++            }
++        }
+         self.pending_tx.pop_front()
+     }
+ 
++    fn note_inbound(&mut self, data: &[u8]) {
++        if !self.announce_done && is_tcp_syn(data) {
++            self.announce_done = true;
++            println!("OWLY_T {} first_inbound_tcp_syn", epoch_ms());
++        }
++    }
++
+     async fn recv(&mut self) -> io::Result<Ipv6Packet> {
+         if let Some(packet) = self.pending_tx.pop_front() {
+             return Ok(packet);
+@@ -1418,6 +1508,7 @@
+     }
+ 
+     fn deliver(&mut self, mut packet: Ipv6Packet) {
++        self.note_inbound(&packet.data);
+         crate::ndp::fanout_unicast_mdns_response(&mut packet, self.own);
+         let hdr = packet.ethernet_header();
+         if let Err(e) = write_tap_ethernet(self.fd.get_ref(), self.vnet_hdr, &hdr, &packet.data) {
+@@ -1426,6 +1517,7 @@
+     }
+ 
+     fn deliver_slice(&mut self, dst: MacAddr, src: MacAddr, data: &[u8]) {
++        self.note_inbound(data);
+         let (eff_dst, payload) =
+             crate::ndp::maybe_fanout_mdns_slice(dst, data, self.own, &mut self.mdns_scratch);
+         let hdr = owly_awdl::ip::ethernet_header_for(eff_dst, src, payload);
+@@ -1469,11 +1561,13 @@
+     }
+ 
+     fn peer_up(&mut self, mac: MacAddr) {
++        println!("OWLY_T {} peer_up {}", epoch_ms(), mac);
+         self.peer_sync.peer_up(mac);
+         self.start_peer_discovery(mac);
+     }
+ 
+     fn peer_up_caps(&mut self, mac: MacAddr, caps: PeerCaps) {
++        println!("OWLY_T {} peer_up {}", epoch_ms(), mac);
+         self.peer_sync.peer_up_caps(mac, caps);
+         self.start_peer_discovery(mac);
+     }
+@@ -1626,8 +1720,8 @@
      };
      if mode != 0 {
          let capacity =
@@ -52,7 +189,7 @@
          if capacity.trim() != "Y" || vht.trim() != "Y" {
              return Err(io::Error::other(
                  "outgoing VHT requires the tested RX capacity and VHT80 radio mode",
-@@ -1747,7 +1767,9 @@
+@@ -1747,7 +1841,9 @@
      };
      let dynamic_peers = peer_sync.is_enabled();
      if dynamic_peers {
@@ -63,7 +200,7 @@
      }
  
      let mut terminate = signal(SignalKind::terminate())?;
-@@ -1812,3 +1834,16 @@
+@@ -1812,3 +1908,16 @@
      if let Some(task) = app_task { task.abort(); }
      result
  }
