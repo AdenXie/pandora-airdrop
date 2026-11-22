@@ -60,6 +60,11 @@ public final class Hook implements IXposedHookLoadPackage {
         if (MISHARE_PKG.equals(p.packageName)) {
             hookMiShare();
             try {
+                hookSkipStaHandoff(p.classLoader);
+            } catch (Throwable t) {
+                Log.i(TAG, "STA handoff hook not applied (" + t + ")");
+            }
+            try {
                 hookLivePhoto(p.classLoader);
             } catch (Throwable t) {
                 Log.w(TAG, "Live Photo hook unavailable", t);
@@ -179,6 +184,43 @@ public final class Hook implements IXposedHookLoadPackage {
         // MIShare 5.4.1: a.k1.d(ArrayList<File>) commits the staged files; merge every pair before that.
         hookMerge(Class.forName("a.k1", false, cl).getDeclaredMethod("d", java.util.ArrayList.class), false);
         Log.i(TAG, "Loaded in MIShare: Live Photo -> Motion Photo merge on a.k1.d (5.4.x)");
+    }
+
+    /**
+     * MIShare 5.5.0 keeps the STA connected during AirDrop (the official concurrent design): before starting XOS
+     * its WifiConflictManager disconnects a 5 GHz STA and waits up to 2 s for DISCONNECTED; on a timeout the
+     * AWDL start fails closed and is retried. Our radio backend turns Wi-Fi off entirely, so that step only adds
+     * a Wi-Fi drop/reconnect and 2-10 s. The manager is AwdlManager's field whose type holds a WifiManager; its
+     * only boolean no-arg method is the "STA has left 5 GHz" check, which we answer with true.
+     */
+    private static void hookSkipStaHandoff(ClassLoader cl) throws Throwable {
+        Class<?> awdl = Class.forName("com.xiaomi.sharop.awdl.AwdlManager", false, cl);
+        Method leave = null;
+        for (java.lang.reflect.Field f : awdl.getDeclaredFields()) {
+            Class<?> t = f.getType();
+            if (t.isPrimitive() || t.getName().startsWith("java.") || t.getName().startsWith("android.")) continue;
+            boolean hasWifi = false;
+            for (java.lang.reflect.Field g : t.getDeclaredFields()) {
+                if (g.getType() == android.net.wifi.WifiManager.class) hasWifi = true;
+            }
+            if (!hasWifi) continue;
+            for (Method m : t.getDeclaredMethods()) {
+                if (m.getReturnType() == boolean.class && m.getParameterTypes().length == 0
+                        && !java.lang.reflect.Modifier.isStatic(m.getModifiers())) {
+                    if (leave != null) throw new IllegalStateException("ambiguous " + leave + " / " + m);
+                    leave = m;
+                }
+            }
+        }
+        if (leave == null) throw new NoSuchMethodException("WifiConflictManager leave-5GHz check");
+        XposedBridge.hookMethod(leave, new XC_MethodHook() {
+            @Override
+            protected void beforeHookedMethod(MethodHookParam param) {
+                Log.i(TAG, "skip STA 5 GHz handoff (radio backend turns Wi-Fi off)");
+                param.setResult(true);
+            }
+        });
+        Log.i(TAG, "Loaded in MIShare: STA handoff bypass on " + leave.getDeclaringClass().getName() + "." + leave.getName());
     }
 
     private static void hookMerge(Method m, final boolean mirroredOnly) {

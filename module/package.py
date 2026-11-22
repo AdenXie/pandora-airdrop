@@ -32,7 +32,7 @@ BINARIES = {
     'wonder-init': '7e8516d73559a8dc25e20705289d8586446b3d0063b48e8c783b83e28bbe213a',
     'xos-bridge.zip': 'c61aeefd5c203140692403dab8a0e556f0cd2bdff41af3660bbb253641744b03',
 }
-APK = ('Pandora-XOS-Compat.apk', '68725a5cf59f26bea58d642722f4447988866a14e371267c102e3a29821b5f23')
+APK = ('Pandora-XOS-Compat.apk', '6ff55cde9702bbf9e6d98e67986150cb6c7aace1246eb19a62d1f1265174f773')
 # shell scripts that radio.sh's installation.sha256 covers, taken from the runtime source dir
 RUNTIME_SCRIPTS = ['radio.sh', 'bridge-supervisor.sh']
 MODULE_SCRIPTS = ['customize.sh', 'service.sh', 'action.sh', 'uninstall.sh', 'common.sh']
