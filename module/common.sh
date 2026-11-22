@@ -14,9 +14,14 @@ EXPECTED_SDK=37
 # Kernel modules are built against the 6.12.69 android16-6 GKI KMI (4k pages). Xiaomi OTAs change the build
 # hash in the release string while the KMI stays the same, so only the KMI part is checked; the stock
 # Wi-Fi driver/firmware hashes below still catch an OTA that really changes the Wi-Fi stack.
-EXPECTED_KERNEL='6.12.69-android16-6-*-4k'
+# Locally rebuilt 6.12.69 kernels keep that KMI (the stock vendor modules still load on them) but replace
+# the android16-6 tag with their own localversion, e.g. 6.12.69-4k-g800c99a9477c-dirty. Accept any 6.12.69
+# release that still carries the -4k page-size tag; a kernel whose KMI really changed fails at insmod.
+EXPECTED_KERNEL='6.12.69-android16-6-*-4k（或自编译 6.12.69*-4k）'
 kernel_ok() {
- case "$1" in 6.12.69-android16-6-*-4k) return 0 ;; esac
+ case "${1%-dirty}" in
+ 6.12.69-4k|6.12.69-4k-*|6.12.69-*-4k|6.12.69-*-4k-*) return 0 ;;
+ esac
  return 1
 }
 STOCK_AMSS=/vendor/firmware_mnt/image/peach/amss20.bin
