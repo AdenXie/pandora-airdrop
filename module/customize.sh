@@ -73,7 +73,13 @@ ui_print "- 校验模块文件..."
 (cd "$MODPATH/apks" && sha256sum -c APKS.sha256 >/dev/null) || abort "! APK 校验失败，安装包可能已损坏"
 
 ui_print "- 停止正在运行的旧版守护..."
-stop_bridge || abort "! 旧版守护未能停止，请重启手机后再安装"
+stop_old_service
+if ! stop_bridge; then
+ ui_print "! 旧版守护未能停止。仍在运行的相关进程："
+ /system/bin/ps -A -o PID,STAT,ARGS 2>/dev/null | grep -E 'bridge-supervisor|XosBridge|pandora_airdrop' | grep -v grep | \
+  while read -r l; do ui_print "  $l"; done
+ abort "! 请重启手机，在 KernelSU 里先关闭本模块，再重新安装"
+fi
 [ "$(radio_state)" = RESTORE_FAILED ] && abort "! 上次 Wi-Fi 恢复失败，请先重启手机再安装"
 
 ui_print "- 部署运行文件到 $RUNTIME_DIR ..."

@@ -47,18 +47,41 @@ radio_state() { cat "$NATIVE_DIR/status" 2>/dev/null || echo UNKNOWN; }
 
 # Stop the XosBridge supervisor. On SIGTERM it stops the bridge and runs "radio.sh restore" itself (stock
 # driver, stock firmware, Wi-Fi as it was), so wait for its lock to be released, up to about 60 s.
+# Signal every process whose command line matches the ERE $2 (never this shell).
+kill_matching() {
+ /system/bin/ps -A -o PID,ARGS 2>/dev/null | while read -r pid args; do
+  case "$pid" in ''|*[!0-9]*) continue ;; esac
+  [ "$pid" = "$$" ] && continue
+  printf '%s\n' "$args" | grep -qE -- "$2" && kill "-$1" "$pid" 2>/dev/null
+ done
+ return 0
+}
+
+# Stop the supervisor and every XosBridge instance, not only the ones in the pid files: an orphaned
+# XosBridge or a supervisor respawned by the service runner must not block us. TERM first (the
+# supervisor's trap stops its bridge and restores Wi-Fi), KILL after about 10 s.
 stop_bridge() {
- p=$(pid_from "$NATIVE_DIR/supervisor.pid" bridge-supervisor.sh) && kill -TERM "$p" 2>/dev/null
- p=$(pid_from "$NATIVE_DIR/bridge.pid" 'XosBridge') && kill -TERM "$p" 2>/dev/null
  i=0
- while [ "$i" -lt 200 ]; do
+ while [ "$i" -lt 150 ]; do
+  sig=TERM; [ "$i" -ge 33 ] && sig=KILL
+  kill_matching "$sig" '(^|/)sh [^ ]*/bridge-supervisor[.]sh'
+  kill_matching "$sig" '(^|/)app_process /system/bin XosBridge( |$)'
   if "$BB" flock -n "$NATIVE_DIR/supervisor.lock" true 2>/dev/null && \
-     ! /system/bin/ps -A -o ARGS 2>/dev/null | grep -q '^[a]pp_process /system/bin XosBridge '; then
+     ! /system/bin/ps -A -o ARGS 2>/dev/null | grep -qE '(^|/)[a]pp_process /system/bin XosBridge( |$)'; then
    return 0
   fi
   i=$((i + 1)); sleep 0.3
  done
  return 1
+}
+
+# The previously installed module's service.sh (its runner loop restarts the supervisor every 5 s and its
+# inotifyd watcher). Only the installer calls this; a reboot starts the new service.sh.
+stop_old_service() {
+ kill_matching TERM '/data/adb/modules/pandora_airdrop/service[.]sh'
+ kill_matching TERM 'inotifyd - /data/adb/modules/pandora_airdrop( |:)'
+ sleep 0.5
+ return 0
 }
 
 # Restore stock Wi-Fi if a session is still recorded (no-op when already restored).
