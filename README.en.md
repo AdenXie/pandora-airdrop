@@ -1,8 +1,8 @@
-# Native AirDrop for Xiaomi 17 Pro
+# Native AirDrop for Xiaomi 17 / 17 Pro
 
 [中文](README.md) | English
 
-Lets Xiaomi Share (小米互传) on the Xiaomi 17 Pro (pandora) receive AirDrop directly from an iPhone. No Mac and no Xiaomi Share iOS app needed: on the iPhone, tap AirDrop as usual and pick this phone.
+Lets Xiaomi Share (小米互传) on the Xiaomi 17 Pro (pandora) and Xiaomi 17 (pudding) receive AirDrop directly from an iPhone. No Mac and no Xiaomi Share iOS app needed: on the iPhone, tap AirDrop as usual and pick this phone.
 
 Inspired by [houji-airdrop](https://github.com/ha0xin/houji-airdrop), a similar project for the Xiaomi 14, and ported to the Xiaomi 17 Pro's hardware and system.
 
@@ -20,7 +20,7 @@ Inspired by [houji-airdrop](https://github.com/ha0xin/houji-airdrop), a similar 
 
 Only this exact combination is supported. If anything differs, the installer aborts without changing anything:
 
-- Xiaomi 17 Pro (`pandora`), Android 17 (SDK 37); tested on HyperOS OS4.0.6.0 and OS4.0.8.0 (XBLCNXM)
+- Xiaomi 17 Pro (`pandora`) or Xiaomi 17 (`pudding`), Android 17 (SDK 37). The 17 Pro is tested on HyperOS OS4.0.6.0 and OS4.0.8.0; the 17 was tested by the community on OS4.0.6.0 ([#1](https://github.com/AdenXie/pandora-airdrop/pull/1)). Both share the kernel, WLAN firmware and stock driver, so one set of modules serves both
 - Kernel 6.12.69 android16-6 GKI (4K pages). OTAs that keep this kernel version are fine; if the stock Wi‑Fi driver or firmware changes, the installer refuses and the module disables itself
 - KernelSU (tested in LKM mode) + LSPosed
 - Xiaomi Share 5.4.1 or 5.5.0 (AirDrop should work on other versions; Live Photo merging may not)

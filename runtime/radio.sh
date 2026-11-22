@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# pandora (Xiaomi 17 Pro) xos0 radio backend for native MIShare, adapted from houji-airdrop runtime/owly-xos/radio.sh.
+# Xiaomi 17 Pro / 17 (pandora / pudding) xos0 radio backend for native MIShare, adapted from houji-airdrop runtime/owly-xos/radio.sh.
 # Runtime only: nothing is written to any partition; the Samsung S26U amss20.bin is a bind mount (gone on reboot).
 # Actions: idle | enter | restore | status
 #   idle   : stock Wi-Fi + pandora_wonder_bridge + wonder(synthetic) loaded, so /proc/sys/net/wonder/wonder_enable
@@ -24,7 +24,6 @@ MF=/sys/module/pandora_mhi_fw/parameters/realloc
 AMSS=/vendor/firmware_mnt/image/peach/amss20.bin
 STOCK=/vendor_dlkm/lib/modules/qca_cld3_peach_v2.ko
 PCI=/sys/bus/pci/devices/0000:01:00.0/power/control
-KERNEL=6.12.69-android16-6-g43b5ab7e247d-abogki561813157-4k
 ORIG=8d0ac09be5489393ed23c19ace3ea9e44ceff5e29c4bb75ea3d22acf26d92e8f       # stock amss20.bin
 CANDIDATE=71fc5c2eb2df048b6c4b494564cfbef730db879a3d8b4426c31ad23b5d448860  # S26U S948BXXS6BZK1 amss20.bin
 CANDIDATE_SIZE=7364672
@@ -74,7 +73,7 @@ verify_files() {
  cd "$R"
  sha256sum -c installation.sha256 >/dev/null
  grep -qx "$CANDIDATE  firmware/s26u-amss20.bin" installation.sha256
- test "$(uname -r)" = "$KERNEL"
+ case "$(uname -r)" in 6.12.69-android16-6-*-4k) ;; *) return 1 ;; esac  # same GKI KMI check as the module
 }
 
 load_idle_modules() {

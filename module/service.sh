@@ -5,7 +5,7 @@ MODDIR=${0%/*}
 . "$MODDIR/common.sh"
 [ -n "$BB" ] || exit 1
 
-BASE_DESC="小米 17 Pro 原生 AirDrop：iPhone 隔空投送到小米互传，Live Photo 合成动态照片。不修改系统分区。"
+BASE_DESC="小米 17 / 17 Pro 原生 AirDrop：iPhone 隔空投送到小米互传，Live Photo 合成动态照片。不修改系统分区。"
 set_desc() {
  awk -v d="$1 $BASE_DESC" '/^description=/ { print "description=" d; next } { print }' \
   "$MODDIR/module.prop" > "$MODDIR/module.prop.tmp" && mv "$MODDIR/module.prop.tmp" "$MODDIR/module.prop"

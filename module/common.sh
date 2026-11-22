@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# Shared constants and helpers for the pandora AirDrop KSU module (sourced by customize/service/action/uninstall).
+# Shared constants and helpers for the Xiaomi 17 / 17 Pro AirDrop KSU module (sourced by customize/service/action/uninstall).
 # Nothing here writes to any partition: the runtime lives in /data/local/tmp/xos, the S26U firmware is a
 # bind mount made only while an AirDrop session is open, and every kernel module is insmod'ed at runtime.
 
@@ -7,7 +7,9 @@ NATIVE_DIR=/data/local/tmp/xos/native
 RUNTIME_DIR=/data/local/tmp/xos/owly
 MODULE_LOG=$NATIVE_DIR/module.log
 
-EXPECTED_DEVICE=pandora
+# Xiaomi 17 Pro (pandora) and Xiaomi 17 (pudding) share the kernel, the peach WLAN firmware and the stock
+# Wi-Fi driver, so one set of modules serves both (pudding support contributed in PR #1 by zytstudio).
+SUPPORTED_DEVICES="pandora pudding"
 EXPECTED_SDK=37
 # Kernel modules are built against the 6.12.69 android16-6 GKI KMI (4k pages). Xiaomi OTAs change the build
 # hash in the release string while the KMI stays the same, so only the KMI part is checked; the stock
@@ -73,7 +75,9 @@ stop_bridge() {
   sig=TERM; [ "$i" -ge 33 ] && sig=KILL
   kill_matching "$sig" '(^|/)sh [^ ]*/bridge-supervisor[.]sh'
   kill_matching "$sig" '(^|/)app_process /system/bin XosBridge( |$)'
-  if "$BB" flock -n "$NATIVE_DIR/supervisor.lock" true 2>/dev/null && \
+  # On a first install $NATIVE_DIR does not exist yet and flock cannot create the lock file there, so a
+  # missing directory counts as "not locked" (fix from PR #1).
+  if { [ ! -d "$NATIVE_DIR" ] || "$BB" flock -n "$NATIVE_DIR/supervisor.lock" true 2>/dev/null; } && \
      ! /system/bin/ps -A -o ARGS 2>/dev/null | grep -qE '(^|/)[a]pp_process /system/bin XosBridge( |$)'; then
    return 0
   fi

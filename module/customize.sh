@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# KernelSU installer for pandora AirDrop (Xiaomi 17 Pro). Writes nothing to any partition.
+# KernelSU installer for Xiaomi 17 / 17 Pro AirDrop. Writes nothing to any partition.
 SKIPUNZIP=0
 . "$MODPATH/common.sh"
 
@@ -7,7 +7,7 @@ SKIPUNZIP=0
 touch "$MODPATH/skip_mount"
 
 ui_print "=========================================="
-ui_print "  小米 17 Pro 原生 AirDrop (pandora)"
+ui_print "  小米 17 / 17 Pro 原生 AirDrop"
 ui_print "  $(grep '^version=' "$MODPATH/module.prop" | cut -d= -f2)  不修改任何系统分区"
 ui_print "=========================================="
 
@@ -21,7 +21,9 @@ ui_print "- 设备: $(getprop ro.product.marketname) ($device)"
 ui_print "- 系统: HyperOS $os (SDK $sdk)"
 ui_print "- 内核: $kernel"
 
-[ "$device" = "$EXPECTED_DEVICE" ] || abort "! 仅支持小米 17 Pro (pandora)，当前为 $device"
+case " $SUPPORTED_DEVICES " in *" $device "*) ;; *)
+ abort "! 仅支持小米 17 Pro (pandora) 和小米 17 (pudding)，当前为 $device" ;;
+esac
 [ "$sdk" = "$EXPECTED_SDK" ] || abort "! 需要 Android 17 (SDK $EXPECTED_SDK)，当前为 SDK $sdk"
 if ! kernel_ok "$kernel"; then
  ui_print "! 内核不匹配，驱动只适用于以下内核（GKI KMI）："
