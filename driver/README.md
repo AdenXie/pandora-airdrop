@@ -7,7 +7,7 @@
 | `pandora_wonder_bridge.ko` | `bridge/` | cnss 与 wonder 之间的生命周期桥 |
 | `pandora_mhi_fw.ko` | `mhi_fw/` | 让 cnss2 重新分配固件缓冲区，否则加载更大的 S26U 固件会内核崩溃 |
 
-目标内核：`6.12.69-android16-6-g43b5ab7e247d-abogki561813157-4k`（小米 17 Pro，HyperOS OS4.0.6.0.XBLCNXM）。模块需要与该内核的符号 CRC 完全一致，换内核必须重新编译和核对。
+目标内核：6.12.69 android16-6 GKI（4K 页），编译时对照的是 `6.12.69-android16-6-g43b5ab7e247d-abogki561813157-4k`（小米 17 Pro，HyperOS OS4.0.6.0.XBLCNXM），OS4.0.8.0 的内核同样可用。模块导入的符号 CRC 必须与手机一致；换内核版本必须重新编译和核对。
 
 ## 驱动补丁顺序
 

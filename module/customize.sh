@@ -23,8 +23,8 @@ ui_print "- 内核: $kernel"
 
 [ "$device" = "$EXPECTED_DEVICE" ] || abort "! 仅支持小米 17 Pro (pandora)，当前为 $device"
 [ "$sdk" = "$EXPECTED_SDK" ] || abort "! 需要 Android 17 (SDK $EXPECTED_SDK)，当前为 SDK $sdk"
-if [ "$kernel" != "$EXPECTED_KERNEL" ]; then
- ui_print "! 内核不匹配，驱动只针对以下内核校验过："
+if ! kernel_ok "$kernel"; then
+ ui_print "! 内核不匹配，驱动只适用于以下内核（GKI KMI）："
  ui_print "  $EXPECTED_KERNEL"
  abort "! 已中止，手机未做任何改动"
 fi
@@ -42,10 +42,10 @@ fi
 
 vc=$(dumpsys package "$MISHARE_PKG" 2>/dev/null | sed -n 's/.*versionCode=\([0-9]*\).*/\1/p' | head -n 1)
 [ -n "$vc" ] || abort "! 未找到小米互传 ($MISHARE_PKG)"
-if [ "$vc" != "$MISHARE_VC" ]; then
- ui_print "! 小米互传版本为 $vc，本模块在 $MISHARE_VC (5.4.1) 上测试。"
- ui_print "  AirDrop 应该可用，但 Live Photo 合成可能失效。"
-fi
+case " $MISHARE_VC_TESTED " in *" $vc "*) ;; *)
+ ui_print "! 小米互传版本为 $vc，本模块在 5.4.1 和 5.5.0 上测试。"
+ ui_print "  AirDrop 应该可用，但 Live Photo 合成可能失效。" ;;
+esac
 if [ ! -d /data/adb/modules/zygisk_lsposed ] && [ ! -d /data/adb/lspd ]; then
  ui_print "! 未检测到 LSPosed。没有兼容模块时，打开互传后会话会被中断。"
 fi

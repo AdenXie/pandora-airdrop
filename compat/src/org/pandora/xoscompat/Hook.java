@@ -161,30 +161,51 @@ public final class Hook implements IXposedHookLoadPackage {
      * Xiaomi Gallery's own MVIMG_*.jpg). Any failure leaves the list and files untouched.
      */
     private static void hookLivePhoto(ClassLoader cl) throws Throwable {
-        Class<?> k1 = Class.forName("a.k1", false, cl);
-        Method commit = k1.getDeclaredMethod("d", java.util.ArrayList.class);
-        XposedBridge.hookMethod(commit, new XC_MethodHook() {
+        // MIShare 5.5.0 converts Live Photos itself in AirDropService.a(ArrayList<File>, AskInfo) (no such method in
+        // 5.4.1), but drops the front camera's rotate+mirror display matrix: the cover turns sideways and the clip
+        // plays mirrored. Take over only those pairs; rear-camera pairs are left to MIShare's own converter.
+        Method native55 = null;
+        try {
+            Class<?> svc = Class.forName("com.xiaomi.sharop.service.AirDropService", false, cl);
+            Class<?> ask = Class.forName("com.xiaomi.sharop.protocol.PlistHelper$AskInfo", false, cl);
+            native55 = svc.getDeclaredMethod("a", java.util.ArrayList.class, ask);
+        } catch (Throwable ignored) {
+        }
+        if (native55 != null) {
+            hookMerge(native55, true);
+            Log.i(TAG, "Loaded in MIShare: front-camera Live Photo merge on AirDropService.a(ArrayList, AskInfo) (5.5.x)");
+            return;
+        }
+        // MIShare 5.4.1: a.k1.d(ArrayList<File>) commits the staged files; merge every pair before that.
+        hookMerge(Class.forName("a.k1", false, cl).getDeclaredMethod("d", java.util.ArrayList.class), false);
+        Log.i(TAG, "Loaded in MIShare: Live Photo -> Motion Photo merge on a.k1.d (5.4.x)");
+    }
+
+    private static void hookMerge(Method m, final boolean mirroredOnly) {
+        XposedBridge.hookMethod(m, new XC_MethodHook() {
             @Override
             protected void beforeHookedMethod(MethodHookParam param) {
                 try {
                     @SuppressWarnings("unchecked")
                     java.util.ArrayList<Object> files = (java.util.ArrayList<Object>) param.args[0];
-                    if (files != null && files.size() >= 2) mergeLivePhotos(files);
+                    if (files != null && files.size() >= 2) mergeLivePhotos(files, mirroredOnly);
                 } catch (Throwable t) {
                     Log.w(TAG, "Live Photo merge skipped", t);
                 }
             }
         });
-        Log.i(TAG, "Loaded in MIShare: Live Photo -> Motion Photo merge on a.k1.d");
     }
 
     private static final long LIVE_MOV_MAX = 48L << 20;
 
-    static void mergeLivePhotos(java.util.ArrayList<Object> files) {
+    static void mergeLivePhotos(java.util.ArrayList<Object> files, boolean mirroredOnly) {
         java.util.List<java.io.File> jpegs = new java.util.ArrayList<>();
         java.util.List<java.io.File> movs = new java.util.ArrayList<>();
         for (Object o : files) {
-            if (!(o instanceof java.io.File)) return; // unexpected list shape: leave it alone
+            if (!(o instanceof java.io.File)) { // unexpected list shape: leave it alone
+                Log.i(TAG, "Live Photo: list element " + (o == null ? "null" : o.getClass().getName()) + ", skipped");
+                return;
+            }
             java.io.File f = (java.io.File) o;
             String n = f.getName().toLowerCase(java.util.Locale.ROOT);
             if (n.endsWith(".jpg") || n.endsWith(".jpeg")) jpegs.add(f);
@@ -196,6 +217,10 @@ public final class Hook implements IXposedHookLoadPackage {
         for (java.io.File mov : movs) {
             String id = MotionPhoto.movContentId(mov);
             if (id == null) continue;
+            if (mirroredOnly && !MotionPhoto.movMirrored(mov)) {
+                Log.i(TAG, "Live Photo: " + mov.getName() + " not mirrored, left to MIShare");
+                continue;
+            }
             java.io.File jpeg = null;
             for (java.io.File j : jpegs) {
                 if (jpegIds.get(j).contains(id)) {

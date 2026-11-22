@@ -126,6 +126,15 @@ final class MotionPhoto {
         return res;
     }
 
+    /** True if the MOV's video track display matrix mirrors (front camera). */
+    static boolean movMirrored(File mov) {
+        try {
+            return remux(read(mov), false).mirrored;
+        } catch (Throwable e) {
+            return false;
+        }
+    }
+
     /** Apple's pairing id from the MOV (com.apple.quicktime.content.identifier), or null. */
     static String movContentId(File mov) {
         try {

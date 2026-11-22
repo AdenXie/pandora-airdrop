@@ -9,7 +9,14 @@ MODULE_LOG=$NATIVE_DIR/module.log
 
 EXPECTED_DEVICE=pandora
 EXPECTED_SDK=37
-EXPECTED_KERNEL=6.12.69-android16-6-g43b5ab7e247d-abogki561813157-4k
+# Kernel modules are built against the 6.12.69 android16-6 GKI KMI (4k pages). Xiaomi OTAs change the build
+# hash in the release string while the KMI stays the same, so only the KMI part is checked; the stock
+# Wi-Fi driver/firmware hashes below still catch an OTA that really changes the Wi-Fi stack.
+EXPECTED_KERNEL='6.12.69-android16-6-*-4k'
+kernel_ok() {
+ case "$1" in 6.12.69-android16-6-*-4k) return 0 ;; esac
+ return 1
+}
 STOCK_AMSS=/vendor/firmware_mnt/image/peach/amss20.bin
 STOCK_AMSS_SHA=8d0ac09be5489393ed23c19ace3ea9e44ceff5e29c4bb75ea3d22acf26d92e8f
 STOCK_KO=/vendor_dlkm/lib/modules/qca_cld3_peach_v2.ko
@@ -20,7 +27,7 @@ S26U_FW_REL=firmware/s26u-amss20.bin
 S26U_FW_SHA=71fc5c2eb2df048b6c4b494564cfbef730db879a3d8b4426c31ad23b5d448860
 S26U_FW_SEARCH="/sdcard/Download/s26u-amss20.bin /sdcard/Download/amss20.bin /data/local/tmp/s26u-amss20.bin $RUNTIME_DIR/$S26U_FW_REL"
 MISHARE_PKG=com.miui.mishare.connectivity
-MISHARE_VC=50401
+MISHARE_VC_TESTED="50401 50500"  # 5.4.1, 5.5.0
 COMPAT_PKG=org.pandora.xoscompat
 
 BB=""

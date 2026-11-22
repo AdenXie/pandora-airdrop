@@ -11,7 +11,7 @@ Inspired by [houji-airdrop](https://github.com/ha0xin/houji-airdrop), a similar 
 | Feature | Status |
 |---|---|
 | iPhone → Xiaomi receive | ✅ Works, 45–53 MB/s measured on large files |
-| Live Photo | ✅ Merged into a Xiaomi motion photo automatically (front-camera video is re-encoded to remove mirroring, the way the Xiaomi Share iOS app does it; rear-camera video is kept lossless) |
+| Live Photo | ✅ Merged into a Xiaomi motion photo automatically. Front-camera video is re-encoded to remove mirroring, the way the Xiaomi Share iOS app does it; rear-camera video is kept lossless (from Xiaomi Share 5.5.0 it merges Live Photos itself; front-camera ones are still taken over here, fixing 5.5.0's sideways and mirrored result) |
 | Xiaomi → iPhone send | ✅ Works (tested with iPhone 17 Pro Max, iOS 27.3) |
 | Live Photos in HEIC | ❌ Not merged; you receive the photo and the video as two files |
 | First large-file send | The iPhone may show "Waiting" for 30–40 s before the transfer prompt appears. The cause is on the iPhone side and is not solved yet |
@@ -20,10 +20,10 @@ Inspired by [houji-airdrop](https://github.com/ha0xin/houji-airdrop), a similar 
 
 Only this exact combination is supported. If anything differs, the installer aborts without changing anything:
 
-- Xiaomi 17 Pro (`pandora`), HyperOS OS4.0.6.0.XBLCNXM (Android 17, SDK 37)
-- Kernel `6.12.69-android16-6-g43b5ab7e247d-abogki561813157-4k`
+- Xiaomi 17 Pro (`pandora`), Android 17 (SDK 37); tested on HyperOS OS4.0.6.0 and OS4.0.8.0 (XBLCNXM)
+- Kernel 6.12.69 android16-6 GKI (4K pages). OTAs that keep this kernel version are fine; if the stock Wi‑Fi driver or firmware changes, the installer refuses and the module disables itself
 - KernelSU (tested in LKM mode) + LSPosed
-- Xiaomi Share 5.4.1 (AirDrop should work on other versions; Live Photo merging may not)
+- Xiaomi Share 5.4.1 or 5.5.0 (AirDrop should work on other versions; Live Photo merging may not)
 
 ## How it works
 

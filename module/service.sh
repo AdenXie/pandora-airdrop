@@ -26,7 +26,7 @@ trim_log "$NATIVE_DIR/owly-bridge.log"
 mlog "boot: service start"
 
 # Never load our driver after an OTA changed the kernel or the stock Wi-Fi driver/firmware.
-if [ "$(uname -r)" != "$EXPECTED_KERNEL" ]; then
+if ! kernel_ok "$(uname -r)"; then
  restore_settings_only
  mlog "kernel changed to $(uname -r); disabled"
  set_desc "[⚠ 已自动停用：内核已变更]"

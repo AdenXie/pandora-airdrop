@@ -11,7 +11,7 @@
 | 功能 | 状态 |
 |---|---|
 | iPhone → 小米 接收 | ✅ 可用，大文件实测 45–53 MB/s |
-| Live Photo | ✅ 自动合成为小米动态照片（前置镜头视频按小米互传 iOS 版的做法转码去镜像，后置无损） |
+| Live Photo | ✅ 自动合成为小米动态照片。前置镜头视频按小米互传 iOS 版的做法转码去镜像；后置无损（互传 5.5.0 起由互传自己合成，前置仍由本模块接管，修正 5.5.0 的转向和镜像问题） |
 | 小米 → iPhone 发送 | ✅ 可用（iPhone 17 Pro Max，iOS 27.3 实测） |
 | HEIC 格式的 Live Photo | ❌ 不合成，收到照片和视频两个文件 |
 | 大文件首次发送 | iPhone 可能显示"等待中"30–40 秒才弹出接收，原因在 iPhone 端，尚未解决 |
@@ -20,10 +20,10 @@
 
 只支持以下组合，不符合时安装器会直接中止，不做任何改动：
 
-- 小米 17 Pro（`pandora`），HyperOS OS4.0.6.0.XBLCNXM（Android 17，SDK 37）
-- 内核 `6.12.69-android16-6-g43b5ab7e247d-abogki561813157-4k`
+- 小米 17 Pro（`pandora`），Android 17（SDK 37）；已在 HyperOS OS4.0.6.0 和 OS4.0.8.0（XBLCNXM）上测试
+- 内核 6.12.69 android16-6 GKI（4K 页）。OTA 只要不换内核版本即可；原厂 Wi‑Fi 驱动或固件变了会拒绝安装、自动停用
 - KernelSU（已在 LKM 模式下测试）+ LSPosed
-- 小米互传 5.4.1（其他版本 AirDrop 应可用，Live Photo 合成可能失效）
+- 小米互传 5.4.1 或 5.5.0（其他版本 AirDrop 应可用，Live Photo 合成可能失效）
 
 ## 原理
 
