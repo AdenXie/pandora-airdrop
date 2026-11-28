@@ -25,7 +25,9 @@
 | `qca_cld3_peach_v2.ko` | MiCode 源码 + `driver/patches/`（GPL-2.0 部分须随附源码，即本仓库） |
 | `wonder.ko`、`pandora_wonder_bridge.ko`、`pandora_mhi_fw.ko` | `driver/` 下的源码（GPL-2.0） |
 | `owly-xosd` | houji-airdrop 353a076 + `owly/pandora-owly.patch`；Owly 协议栈为 MIT |
-| `xos-bridge.zip`、`wonder-init` | houji-airdrop 100c1e0 原样编译；`wonder-init` 为 GPL-2.0-only，XosBridge 同上，未授予开源许可 |
+| `xos-bridge.zip` | 由 `bridge/XosBridge.java` 编译（基于 houji-airdrop 100c1e0 改写为状态锁/无线操作锁分离） |
+| `fw-fetcher.zip` | 由 `firmware/android/FwFetcher.java` 编译（GPL-2.0-only） |
+| `wonder-init` | houji-airdrop 100c1e0 原样编译（GPL-2.0-only） |
 | `Pandora-XOS-Compat.apk` | `compat/` |
 
 ## 不随本仓库分发的闭源组件
@@ -37,6 +39,7 @@
 houji-airdrop 的说明写明，其自有新增文件"暂未另行授予统一开源许可"。本仓库中基于这些文件的部分：
 
 - `runtime/radio.sh`、`runtime/bridge-supervisor.sh`
+- `bridge/XosBridge.java`
 - `owly/pandora-owly.patch`
 - `compat/` 中移植的相册分享跳转修复（`Hook.java` 的 `hookIntentResolver` 方法）
 - `firmware/stream_vendor.py`
@@ -46,4 +49,4 @@ houji-airdrop 的说明写明，其自有新增文件"暂未另行授予统一�
 
 ## 本项目自有代码
 
-`module/`、`compat/` 的非移植部分、`firmware/` 下除 `stream_vendor.py` 以外的脚本与位置文件、`tools/`、`docs/` 以 GPL-2.0-only 发布，与驱动部分一致，全文见根目录 [LICENSE](LICENSE)。根目录 LICENSE 只覆盖这些部分和其他标明 GPL-2.0 的文件，不覆盖上面的 houji-airdrop 衍生部分。
+`module/`、`compat/` 的非移植部分、`firmware/` 下除 `stream_vendor.py` 以外的脚本、Java 拉取器与位置文件、`tools/`、`docs/` 以 GPL-2.0-only 发布，与驱动部分一致，全文见根目录 [LICENSE](LICENSE)。根目录 LICENSE 只覆盖这些部分和其他标明 GPL-2.0 的文件，不覆盖上面的 houji-airdrop 衍生部分。

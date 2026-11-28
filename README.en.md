@@ -1,8 +1,8 @@
-# Native AirDrop for Xiaomi 17 / 17 Pro
+# Native AirDrop for Xiaomi 17 Series / REDMI K90 Pro Max
 
 [中文](README.md) | English
 
-Lets Xiaomi Share (小米互传) on the Xiaomi 17 Pro (pandora) and Xiaomi 17 (pudding) receive AirDrop directly from an iPhone. No Mac and no Xiaomi Share iOS app needed: on the iPhone, tap AirDrop as usual and pick this phone.
+Lets Xiaomi Share (小米互传) on the Xiaomi 17 series (`pandora`, `pudding`, `popsicle`) and REDMI K90 Pro Max (`myron`) exchange files directly over native AirDrop with an iPhone, iPad, or Mac. No Mac relay and no Xiaomi Share iOS app needed.
 
 Inspired by [houji-airdrop](https://github.com/ha0xin/houji-airdrop), a similar project for the Xiaomi 14, and ported to the Xiaomi 17 Pro's hardware and system.
 
@@ -20,7 +20,7 @@ Inspired by [houji-airdrop](https://github.com/ha0xin/houji-airdrop), a similar 
 
 Only this exact combination is supported. If anything differs, the installer aborts without changing anything:
 
-- Xiaomi 17 Pro (`pandora`) or Xiaomi 17 (`pudding`), Android 17 (SDK 37). The 17 Pro is tested on HyperOS OS4.0.6.0 and OS4.0.8.0; the 17 was tested by the community on OS4.0.6.0 ([#1](https://github.com/AdenXie/pandora-airdrop/pull/1)). Both share the kernel, WLAN firmware and stock driver, so one set of modules serves both
+- Xiaomi 17 Pro (`pandora`), Xiaomi 17 (`pudding`), Xiaomi 17 Pro Max (`popsicle`), or REDMI K90 Pro Max (`myron`), Android 17 (SDK 37). The 17 Pro is tested on HyperOS OS4.0.6.0 and OS4.0.8.0; the 17 was tested by the community on OS4.0.6.0 ([#1](https://github.com/AdenXie/pandora-airdrop/pull/1)). All share the same kernel, WLAN firmware and stock driver, so one set of modules serves all of them
 - Kernel 6.12.69 android16-6 GKI (4K pages). OTAs that keep this kernel version are fine; if the stock Wi‑Fi driver or firmware changes, the installer refuses and the module disables itself
 - KernelSU (tested in LKM mode) + LSPosed
 - Xiaomi Share 5.4.1 or 5.5.0 (AirDrop should work on other versions; Live Photo merging may not)
@@ -40,9 +40,11 @@ During a session, the LSPosed compat module hides from Xiaomi Share the fact tha
 
 ## Install
 
-1. Get the Samsung S26 Ultra WLAN firmware (not provided here) and put it on the phone at `/sdcard/Download/s26u-amss20.bin`. The easiest way is to run `python firmware/get_amss20.py --push` on a computer: it downloads only a few MB from Samsung's official server, rebuilds and verifies the file, and pushes it with adb. See [firmware/README.md](firmware/README.md).
-2. Install `pandora-airdrop-vX.Y.Z.zip` from the releases page in KernelSU. The installer checks the device, kernel, stock driver and firmware, and installs the LSPosed compat module for you.
-3. First install only: enable "Pandora XOS 小米互传兼容" in LSPosed, keep the default scope (Xiaomi Share and the system share sheet), then reboot.
+1. Keep the phone online and flash `pandora-airdrop-vX.Y.Z.zip` from the releases page in KernelSU:
+   - The zip carries **no Samsung proprietary firmware**. If `/sdcard/Download/s26u-amss20.bin` is not cached on the phone yet, the installer uses the built-in zero-dependency fetcher (`firmware/android/FwFetcher.java`) to download the ~5.2 MB slice directly from Samsung's official server, reconstruct and SHA-256 verify `amss20.bin`, and cache it at `/sdcard/Download/s26u-amss20.bin`.
+   - Alternatively, you can still run `python firmware/get_amss20.py --push` on a computer before flashing; see [firmware/README.md](firmware/README.md).
+2. The installer checks the device, kernel, stock driver and firmware, and installs the LSPosed compat module for you.
+3. First install (or when prompted that the compat APK signing key changed): enable "Pandora XOS 小米互传兼容" in LSPosed, keep the default scope (Xiaomi Share and the system share sheet), then reboot.
 
 ## Usage
 
@@ -65,16 +67,17 @@ Measured results (details in [docs/TECHNICAL.md](docs/TECHNICAL.md), in Chinese)
 | Directory | Contents |
 |---|---|
 | [driver/](driver/README.md) | WLAN driver patches, wonder, bridge, the MHI helper module, and build notes |
-| [owly/](owly/README.md) | owly-xosd patch (peer gating and more) |
+| [owly/](owly/README.md) | owly-xosd patch (peer gating and discovery fixes) |
 | `compat/` | LSPosed module source; `build.sh` needs android.jar and build-tools from the Android SDK |
+| `bridge/` | Dual-lock `XosBridge` source; `build.sh` needs android.jar and d8 |
 | `runtime/` | Session control script `radio.sh` and the `bridge-supervisor.sh` daemon |
 | `module/` | KernelSU module scripts and the packaging script |
-| [firmware/](firmware/README.md) | How to get the firmware, and a download script |
+| [firmware/](firmware/README.md) | How to get the firmware, PC script, and on-device `FwFetcher` |
 | `tools/` | Helpers such as the kernel module CRC checker |
 
 The READMEs in the subdirectories are in Chinese.
 
-To package, put the 8 built files in one directory (file names are listed at the top of `module/package.py`) and run
+To package, put the 9 built files in one directory (file names are listed at the top of `module/package.py`) and run
 
 ```sh
 python module/package.py --inputs <dir>

@@ -39,7 +39,8 @@ python get_amss20.py --module pandora-airdrop-v1.0.0.zip      # 同时生成含�
 
 ## 安装时如何使用
 
-把文件放到手机的 `/sdcard/Download/s26u-amss20.bin`（或 `/sdcard/Download/amss20.bin`）后再安装模块。安装器校验 SHA-256 后把它复制进模块目录，之后更新模块会自动沿用已部署的副本。
+- **自动获取（推荐）**：直接刷入不含固件的 KernelSU 安装包时，若手机联网且本地尚未缓存固件，安装器会自动调用内置的 `android/FwFetcher.java`（编译为 `fw-fetcher.zip`）从三星官方服务器流式拉取约 5.2 MB 切片、校验后缓存至 `/sdcard/Download/s26u-amss20.bin`。
+- **手动预置**：把文件放到手机的 `/sdcard/Download/s26u-amss20.bin`（或 `/sdcard/Download/amss20.bin`）后再安装模块。安装器校验 SHA-256 后把它复制进模块目录，之后更新模块会自动沿用已部署的副本。
 
 固件只在 AirDrop 会话期间以 bind mount 方式覆盖 `/vendor/firmware_mnt/image/peach/amss20.bin`，会话结束或重启后即失效，不写入任何分区。
 

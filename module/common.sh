@@ -7,9 +7,10 @@ NATIVE_DIR=/data/local/tmp/xos/native
 RUNTIME_DIR=/data/local/tmp/xos/owly
 MODULE_LOG=$NATIVE_DIR/module.log
 
-# Xiaomi 17 Pro (pandora) and Xiaomi 17 (pudding) share the kernel, the peach WLAN firmware and the stock
-# Wi-Fi driver, so one set of modules serves both (pudding support contributed in PR #1 by zytstudio).
-SUPPORTED_DEVICES="pandora pudding"
+# Xiaomi 17 series (pandora / pudding / popsicle) and REDMI K90 Pro Max (myron) share the kernel, the peach
+# WLAN firmware and the stock Wi-Fi driver, so one set of modules serves all (pudding support contributed in PR #1
+# by zytstudio).
+SUPPORTED_DEVICES="pandora pudding popsicle myron"
 EXPECTED_SDK=37
 # Kernel modules are built against the 6.12.69 android16-6 GKI KMI (4k pages). Xiaomi OTAs change the build
 # hash in the release string while the KMI stays the same, so only the KMI part is checked; the stock

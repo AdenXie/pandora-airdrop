@@ -5,10 +5,10 @@ usage: python package.py --inputs DIR [--firmware PATH] [--out DIR] [--strict]
 
 DIR holds the built binaries under these names:
   qca_cld3_peach_v2.ko  wonder.ko  pandora_wonder_bridge.ko  pandora_mhi_fw.ko
-  owly-xosd  wonder-init  xos-bridge.zip  Pandora-XOS-Compat.apk
+  owly-xosd  wonder-init  xos-bridge.zip  Pandora-XOS-Compat.apk  fw-fetcher.zip
 Without --firmware the zip carries no Samsung firmware (the form that may be redistributed); the installer then
-looks for the user's own copy on the phone. Each input is compared with the SHA-256 of the build verified on a
-Xiaomi 17 Pro on 2026-11-19; a mismatch is a warning, or an error with --strict.
+fetches it on-device from Samsung FUS (or uses a copy cached on the phone). Each input is compared with the
+SHA-256 of the verified build; a mismatch is a warning, or an error with --strict.
 """
 import argparse
 import hashlib
@@ -28,11 +28,13 @@ BINARIES = {
     'wonder.ko': '6d67be07d74c84344bba7eda2a84e267bc2f24e1fced8265aadec82fad840abe',
     'pandora_wonder_bridge.ko': '46e4ad7a425b0b7530431407b23a94fa4988a292db043ca50ccc6ea65dc39ceb',
     'pandora_mhi_fw.ko': 'e858a831e08bb7d849900da92923633b8b97a21de7d918824becd9e97319541b',
-    'owly-xosd': '9bb40387ac60c7a0dbb236fb60ba9ac20e1f666059e8d8ef5e27d40cad7f5420',
+    'owly-xosd': '773417c5bbc81cefb0af9d36ac5eff09cacaff6f912a2106dd6d0ed6133b2e36',
     'wonder-init': '7e8516d73559a8dc25e20705289d8586446b3d0063b48e8c783b83e28bbe213a',
-    'xos-bridge.zip': 'c61aeefd5c203140692403dab8a0e556f0cd2bdff41af3660bbb253641744b03',
+    'xos-bridge.zip': '71fc3c33ceafb91219666444fc6bb3e60a8a8849844a1121a659f33bc0eebb33',
 }
-APK = ('Pandora-XOS-Compat.apk', '6ff55cde9702bbf9e6d98e67986150cb6c7aace1246eb19a62d1f1265174f773')
+APK = ('Pandora-XOS-Compat.apk', 'e3c35134a9c54bde45bff12e816e1a82eceac777cc3150d39409ca1ddaad9d95')
+FW_FETCHER = ('fw-fetcher.zip', '7bcacccb80f5bebd525419eea3b100c51cad144729d12ae4fa1eb20ac3878a9b')
+FW_RECIPE = HERE.parent / 'firmware' / 'recipe' / 'S948BXXS6BZK1.json'
 # shell scripts that radio.sh's installation.sha256 covers, taken from the runtime source dir
 RUNTIME_SCRIPTS = ['radio.sh', 'bridge-supervisor.sh']
 MODULE_SCRIPTS = ['customize.sh', 'service.sh', 'action.sh', 'uninstall.sh', 'common.sh']
@@ -84,6 +86,9 @@ def main():
         payload[name] = data
     apk = (a.inputs / APK[0]).read_bytes()
     check(APK[0], apk, APK[1])
+    fetcher = (a.inputs / FW_FETCHER[0]).read_bytes()
+    check(FW_FETCHER[0], fetcher, FW_FETCHER[1])
+    recipe = lf(FW_RECIPE.read_bytes())
     fw = None
     if a.firmware:
         fw = a.firmware.read_bytes()
@@ -109,6 +114,8 @@ def main():
         add(zf, 'payload/installation.sha256', manifest.encode(), 0o644)
         add(zf, f'apks/{APK[0]}', apk, 0o644)
         add(zf, 'apks/APKS.sha256', f'{sha(apk)}  {APK[0]}\n'.encode(), 0o644)
+        add(zf, f'tools/{FW_FETCHER[0]}', fetcher, 0o644)
+        add(zf, f'tools/{FW_RECIPE.name}', recipe, 0o644)
     print(zpath)
     print(manifest, end='')
     print('zip sha256', sha(zpath.read_bytes()), zpath.stat().st_size, 'bytes')

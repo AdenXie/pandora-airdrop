@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# Xiaomi 17 Pro / 17 (pandora / pudding) xos0 radio backend for native MIShare, adapted from houji-airdrop runtime/owly-xos/radio.sh.
+# Xiaomi 17 series / K90 Pro Max (pandora / pudding / popsicle / myron) xos0 radio backend for native MIShare, adapted from houji-airdrop runtime/owly-xos/radio.sh.
 # Runtime only: nothing is written to any partition; the Samsung S26U amss20.bin is a bind mount (gone on reboot).
 # Actions: idle | enter | restore | status
 #   idle   : stock Wi-Fi + pandora_wonder_bridge + wonder(synthetic) loaded, so /proc/sys/net/wonder/wonder_enable
@@ -80,9 +80,23 @@ wait_wifi() {
 
 verify_files() {
  cd "$R"
+ kernel_ok "$(uname -r)"
+ local stamp
+ stamp="$(cat /proc/sys/kernel/random/boot_id):$(sha256sum installation.sha256 | awk '{print $1}')"
+ if test -f "$STATE/verified.stamp" && test "$(cat "$STATE/verified.stamp" 2>/dev/null || true)" = "$stamp" && \
+    test -f "$RADIO/amss20.bin" && test "$(wc -c < "$RADIO/amss20.bin" 2>/dev/null || echo 0)" = "$CANDIDATE_SIZE"; then
+  VERIFIED_FAST=1
+  return 0
+ fi
+ VERIFIED_FAST=0
  sha256sum -c installation.sha256 >/dev/null
  grep -qx "$CANDIDATE  firmware/s26u-amss20.bin" installation.sha256
- kernel_ok "$(uname -r)"
+}
+
+mark_verified() {
+ local stamp
+ stamp="$(cat /proc/sys/kernel/random/boot_id):$(sha256sum "$R/installation.sha256" | awk '{print $1}')"
+ printf '%s\n' "$stamp" > "$STATE/verified.stamp"
 }
 
 load_idle_modules() {
@@ -99,7 +113,9 @@ stock_environment() {
  test ! -e /sys/class/net/"$IFACE"
  test ! -e /sys/class/net/wondertap0
  ! grep -q " $AMSS " /proc/1/mountinfo
- check "$ORIG" "$AMSS"
+ if test "${VERIFIED_FAST:-0}" != 1; then
+  check "$ORIG" "$AMSS"
+ fi
 }
 
 clean_routes() {
@@ -298,13 +314,13 @@ start_xos() {
  ) &
  echo $! > "$STATE/runner.pid"
  ready=0
- for i in $(seq 1 300); do
+ for i in $(seq 1 600); do
   if grep -q "^OWLY_READY iface=$IFACE " "$STATE/runner.log" 2>/dev/null && \
      ip -6 -o addr show dev "$IFACE" scope link 2>/dev/null | grep -vE 'tentative|dadfailed' | grep -q 'fe80:'; then
    ready=1; break
   fi
   runner_alive
-  sleep 0.05
+  sleep 0.02
  done
  test "$ready" = 1
  routes
@@ -327,22 +343,25 @@ enter() {
  setstate ENTERING
  MHI_CLEARED=0
  mhi_prepare
- cmp -s "$R/firmware/s26u-amss20.bin" "$RADIO/amss20.bin" 2>/dev/null || cp "$R/firmware/s26u-amss20.bin" "$RADIO/amss20.bin"
- chown system:system "$RADIO/amss20.bin"; chmod 440 "$RADIO/amss20.bin"; chcon u:object_r:firmware_file:s0 "$RADIO/amss20.bin"
- check "$CANDIDATE" "$RADIO/amss20.bin"
- sync
+ if test "${VERIFIED_FAST:-0}" != 1; then
+  cmp -s "$R/firmware/s26u-amss20.bin" "$RADIO/amss20.bin" 2>/dev/null || cp "$R/firmware/s26u-amss20.bin" "$RADIO/amss20.bin"
+  chown system:system "$RADIO/amss20.bin"; chmod 440 "$RADIO/amss20.bin"; chcon u:object_r:firmware_file:s0 "$RADIO/amss20.bin"
+  check "$CANDIDATE" "$RADIO/amss20.bin"
+  sync
+  mark_verified
+ fi
 
  # wonder (idle, synthetic) must be re-bound to the PT provider: drop it before the swap.
  if test -e /sys/module/wonder; then bounded rmmod wonder; fi
  cmd wifi set-scan-always-available disabled >/dev/null 2>&1 || true
  cmd wifi set-wifi-enabled disabled >/dev/null 2>&1 || true
- for i in $(seq 1 80); do cmd wifi status 2>/dev/null | grep -q 'Wifi is disabled' && break; sleep 0.1; done
+ for i in $(seq 1 200); do cmd wifi status 2>/dev/null | grep -q 'Wifi is disabled' && break; sleep 0.03; done
  stop vendor.cnd
  stop vendor.wifi_hal_legacy
- for i in $(seq 1 240); do
+ for i in $(seq 1 500); do
   test "$(getprop init.svc.vendor.cnd):$(getprop init.svc.vendor.wifi_hal_legacy)" = stopped:stopped && test "$(cat "$W/refcnt")" = 0 && break
-  if test $((i % 20)) = 0; then stop vendor.wifi_hal_legacy; fi
-  sleep 0.05
+  if test $((i % 40)) = 0; then stop vendor.wifi_hal_legacy; fi
+  sleep 0.02
  done
  test "$(cat "$W/refcnt")" = 0
  bounded rmmod qca_cld3_peach_v2
@@ -352,17 +371,19 @@ enter() {
  if test -e /sys/module/$BRIDGE; then bounded rmmod $BRIDGE; fi   # fresh broker per session
 
  mount --bind "$RADIO/amss20.bin" "$AMSS"
- check "$CANDIDATE" "$AMSS"
+ if test "${VERIFIED_FAST:-0}" != 1; then
+  check "$CANDIDATE" "$AMSS"
+ fi
  insmod "$R/$BRIDGE.ko"
  echo on > "$PCI"
  # shellcheck disable=SC2086
  bounded insmod "$R/qca_cld3_peach_v2.ko" $PT_PARAMS
  activated=0
- for i in $(seq 1 100); do
+ for i in $(seq 1 250); do
   if sh -c "echo 1 > $W/parameters/pt_activate" 2>/dev/null && grep -q 'published=1' "$W/parameters/pt_activate"; then
    activated=1; break
   fi
-  sleep 0.1
+  sleep 0.03
  done
  test "$activated" = 1
  insmod "$R/wonder.ko" synthetic_provider=1
@@ -375,7 +396,7 @@ enter() {
  bounded ip link set dev wonder0 up
  iw dev wonder0 info | grep -q 'channel 149 (5745 MHz)' || bounded iw dev wonder0 set channel 149 HT20
  iw dev wonder0 info | grep -q 'channel 149 (5745 MHz)'
- for i in $(seq 1 40); do grep -q 'phase=3 error=0 closing=0 handle=1 freq=5745 ' "$W/parameters/pt_activate" && break; sleep 0.05; done
+ for i in $(seq 1 100); do grep -q 'phase=3 error=0 closing=0 handle=1 freq=5745 ' "$W/parameters/pt_activate" && break; sleep 0.02; done
  grep -q 'phase=3 error=0 closing=0 handle=1 freq=5745 ' "$W/parameters/pt_activate"
  start_xos
  trap - EXIT

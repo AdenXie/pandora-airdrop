@@ -1,8 +1,8 @@
-# 小米 17 / 17 Pro 原生 AirDrop
+# 小米 17 系列 / REDMI K90 Pro Max 原生 AirDrop
 
 中文 | [English](README.en.md)
 
-让小米 17 Pro（pandora）和小米 17（pudding）的小米互传直接接收 iPhone 的隔空投送。不需要 Mac、不需要小米互传 iOS 版；iPhone 端照常点「隔空投送」，选中这台小米即可。
+让小米 17 系列（`pandora` / `pudding` / `popsicle`）与 REDMI K90 Pro Max（`myron`）的小米互传直接与 iPhone / iPad / Mac 原生双向隔空投送。不需要 Mac、不需要小米互传 iOS 版；Apple 端照常点「隔空投送」即可收发。
 
 灵感来源于 [houji-airdrop](https://github.com/ha0xin/houji-airdrop)（小米 14 的同类项目）移植到小米 17 Pro 的硬件与系统上。
 
@@ -20,7 +20,7 @@
 
 只支持以下组合，不符合时安装器会直接中止，不做任何改动：
 
-- 小米 17 Pro（`pandora`）或小米 17（`pudding`），Android 17（SDK 37）。17 Pro 已在 HyperOS OS4.0.6.0 和 OS4.0.8.0 上测试；17 由社区在 OS4.0.6.0 上实测（[#1](https://github.com/AdenXie/pandora-airdrop/pull/1)）。两机内核、WLAN 固件和原厂驱动相同，共用同一套模块
+- 小米 17 Pro（`pandora`）、小米 17（`pudding`）、小米 17 Pro Max（`popsicle`）或 REDMI K90 Pro Max（`myron`），Android 17（SDK 37）。17 Pro 已在 HyperOS OS4.0.6.0 和 OS4.0.8.0 上测试；17 由社区在 OS4.0.6.0 上实测（[#1](https://github.com/AdenXie/pandora-airdrop/pull/1)）；同平台机型共享内核、WLAN 固件与原厂驱动，共用同一套模块
 - 内核 6.12.69 android16-6 GKI（4K 页），原厂或自编译内核均可（如 `6.12.69-4k-g…`）。OTA 只要不换内核版本即可；原厂 Wi‑Fi 驱动或固件变了会拒绝安装、自动停用
 - KernelSU（已在 LKM 模式下测试）+ LSPosed
 - 小米互传 5.4.1 或 5.5.0（其他版本 AirDrop 应可用，Live Photo 合成可能失效）
@@ -40,9 +40,11 @@ LSPosed 兼容模块在会话期间对小米互传隐藏 Wi‑Fi 被关闭的事
 
 ## 安装
 
-1. 准备三星 S26 Ultra 的 WLAN 固件（本仓库不提供），放到手机 `/sdcard/Download/s26u-amss20.bin`。最简单的办法是在电脑上运行 `python firmware/get_amss20.py --push`：它从三星官方服务器只下载几 MB，还原并校验固件后用 adb 推送到手机。详见 [firmware/README.md](firmware/README.md)。
-2. 在 KernelSU 中安装发布页的 `pandora-airdrop-vX.Y.Z.zip`。安装器会校验机型、内核、原厂驱动和固件，并自动安装 LSPosed 兼容模块。
-3. 首次安装：在 LSPosed 中启用「Pandora XOS 小米互传兼容」，作用域保持默认（小米互传、系统分享），然后重启。
+1. 保持手机联网，直接在 KernelSU 中安装发布页的 `pandora-airdrop-vX.Y.Z.zip`：
+   - 安装包**不含三星闭源固件**；若手机 `/sdcard/Download/s26u-amss20.bin` 尚未缓存固件，安装器会通过内置的零依赖 Java 拉取器（`firmware/android/FwFetcher.java`）直连三星官方服务器下载约 5.2 MB 切片，在本地还原并校验 SHA-256 后自动缓存到 `/sdcard/Download/s26u-amss20.bin`。
+   - 若手机网络访问三星服务器较慢，也可在电脑运行 `python firmware/get_amss20.py --push` 手动推送到手机后再安装。详见 [firmware/README.md](firmware/README.md)。
+2. 安装器会校验机型、内核、原厂驱动和固件，并自动安装 LSPosed 兼容模块。
+3. 首次安装（或升级提示证书更新时）：在 LSPosed 中启用「Pandora XOS 小米互传兼容」，作用域保持默认（小米互传、系统分享），然后重启。
 
 ## 使用
 
@@ -65,14 +67,15 @@ LSPosed 兼容模块在会话期间对小米互传隐藏 Wi‑Fi 被关闭的事
 | 目录 | 内容 |
 |---|---|
 | [driver/](driver/README.md) | WLAN 驱动补丁、wonder、bridge、MHI 辅助模块及编译要点 |
-| [owly/](owly/README.md) | owly-xosd 补丁（对端门控等） |
+| [owly/](owly/README.md) | owly-xosd 补丁（对端门控与发现修复等） |
 | `compat/` | LSPosed 模块源码，`build.sh` 需要 Android SDK 的 android.jar 与 build-tools |
+| `bridge/` | 双锁分离版 `XosBridge` 源码，`build.sh` 需要 android.jar 与 d8 |
 | `runtime/` | 会话控制脚本 `radio.sh` 与守护 `bridge-supervisor.sh` |
 | `module/` | KernelSU 模块脚本与打包脚本 |
-| [firmware/](firmware/README.md) | 固件获取说明与下载脚本 |
+| [firmware/](firmware/README.md) | 固件获取说明、电脑端脚本与手机端 `FwFetcher` |
 | `tools/` | 内核模块 CRC 核对等辅助工具 |
 
-打包：把编译好的 8 个文件放进一个目录（文件名见 `module/package.py` 开头），然后运行
+打包：把编译好的 9 个文件放进一个目录（文件名见 `module/package.py` 开头），然后运行
 
 ```sh
 python module/package.py --inputs <目录>

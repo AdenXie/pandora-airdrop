@@ -1,39 +1,47 @@
+diff --git a/native/houji-runner/src/android.rs b/native/houji-runner/src/android.rs
+index bb8cdca..2b41274 100644
 --- a/native/houji-runner/src/android.rs
 +++ b/native/houji-runner/src/android.rs
-@@ -449,6 +449,7 @@
+@@ -449,6 +449,7 @@ struct RxTelemetry {
      rx_gaps: Option<RxGaps>,
      rx_invalid: DropCount,
      rx_addba_resp_reported: u8,
-+    data_note: std::collections::HashMap<[u8; 6], Instant>,
++    data_note: std::collections::HashMap<[u8; 6], (bool, Instant)>,
  }
  
  impl RxTelemetry {
-@@ -486,6 +487,24 @@
+@@ -486,6 +487,30 @@ impl RxTelemetry {
  
      fn accept(&mut self, received: &radiotap::Rx<'_>) {
          let raw = received.frame;
-+        // pandora peer gate: a data frame (type 2) proves its transmitter is talking to us
-+        // only frames meant for us count: unicast to our address, or a multicast _airdrop mDNS query
-+        if raw.len() >= 16
-+            && raw[0] & 0x0c == 0x08
-+            && ((raw[4..10] == self.own.0 && carries_tcp_udp(raw))
-+                || (raw[4] & 1 == 1 && raw.windows(8).any(|w| w == b"_airdrop"))) {
-+            let mut ta = [0u8; 6];
-+            ta.copy_from_slice(&raw[10..16]);
-+            let now = Instant::now();
-+            let due = self
-+                .data_note
-+                .get(&ta)
-+                .is_none_or(|t| now.duration_since(*t) >= std::time::Duration::from_millis(500));
-+            if due {
-+                self.data_note.insert(ta, now);
-+                crate::peer_ctl::note_peer_data(MacAddr(ta), raw[4..10] == self.own.0);
++        // pandora peer gate: a data frame (type 2) proves its transmitter is talking to us:
++        // unicast TCP, unicast UDP 5353 carrying `_airdrop`, or multicast `_airdrop` mDNS.
++        if raw.len() >= 16 && raw[0] & 0x0c == 0x08 {
++            let note = if raw[4..10] == self.own.0 {
++                crate::peer_ctl::carries_airdrop_unicast(raw)
++            } else if raw[4] & 1 == 1 && raw.windows(8).any(|w| w == b"_airdrop") {
++                Some(false)
++            } else {
++                None
++            };
++            if let Some(is_tcp) = note {
++                let mut ta = [0u8; 6];
++                ta.copy_from_slice(&raw[10..16]);
++                let now = Instant::now();
++                let due = self.data_note.get(&ta).is_none_or(|&(prev_tcp, t)| {
++                    (is_tcp && !prev_tcp)
++                        || now.duration_since(t) >= std::time::Duration::from_millis(500)
++                });
++                if due {
++                    self.data_note.insert(ta, (is_tcp, now));
++                    crate::peer_ctl::note_peer_data(MacAddr(ta), is_tcp);
++                }
 +            }
 +        }
          if let Some(rx_gaps) = &mut self.rx_gaps
              && raw.len() >= 1536
              && raw[0] == 0x88
-@@ -592,6 +611,7 @@
+@@ -592,6 +617,7 @@ impl Monitor {
                  rx_gaps: rx_gaps_enabled().then(RxGaps::default),
                  rx_invalid: DropCount::default(),
                  rx_addba_resp_reported: 0,
@@ -41,11 +49,12 @@
              },
              tx_fatal: DropCount::default(),
              tx_backpressure: 0,
-@@ -1084,6 +1104,32 @@
+@@ -1084,6 +1110,33 @@ impl Drop for Tun {
  enum TapInject {
      Outbound(Ipv6Packet),
      InboundTap(Vec<u8>),
 +    ReplayAnnounce(u32),
++    PeerHardwareReady(MacAddr),
 +}
 +
 +/// Wall clock in ms (aligns with logcat -v epoch).
@@ -74,26 +83,47 @@
  }
  
  /// Persistent `NETLINK_ROUTE` socket driven off the async loop by [`NeighWorker`].
-@@ -1263,6 +1309,12 @@
+@@ -1263,6 +1316,17 @@ struct Tap {
      inject_tx: mpsc::UnboundedSender<TapInject>,
      inject_rx: mpsc::UnboundedReceiver<TapInject>,
      discovery_tasks: BTreeMap<MacAddr, JoinHandle<()>>,
 +    // pandora: an iPhone whose share sheet has been open for a while browses sparsely, so the two MIShare
 +    // start-up announcements are often missed. Re-send its latest `_airdrop` announcement on a decaying
 +    // schedule until the first inbound TCP connection (the iPhone's /Discover) or 30 s.
++    outbound_note: std::collections::HashMap<[u8; 6], (bool, Instant)>,
++    hw_query_last: std::collections::HashMap<MacAddr, Instant>,
 +    announce: Option<Ipv6Packet>,
 +    announce_started: bool,
 +    announce_done: bool,
++    announce_task: Option<JoinHandle<()>>,
++    announce_started_at: Option<Instant>,
++    last_inbound_syn: Option<Instant>,
  }
  
  impl Tap {
-@@ -1320,12 +1372,23 @@
+@@ -1305,6 +1369,10 @@ impl Tap {
+         let rtnl = RtnlNeigh::open()?;
+         let neigh = NeighWorker::spawn(ifindex, rtnl);
+         let (inject_tx, inject_rx) = mpsc::unbounded_channel();
++        let hw_tx = inject_tx.clone();
++        peer_sync.set_on_peer_added(move |mac| {
++            let _ = hw_tx.send(TapInject::PeerHardwareReady(mac));
++        });
+         Ok(Self {
+             fd: register(fd)?,
+             vnet_hdr: true,
+@@ -1320,18 +1388,47 @@ impl Tap {
              inject_tx,
              inject_rx,
              discovery_tasks: BTreeMap::new(),
++            outbound_note: std::collections::HashMap::new(),
++            hw_query_last: std::collections::HashMap::new(),
 +            announce: None,
 +            announce_started: false,
 +            announce_done: false,
++            announce_task: None,
++            announce_started_at: None,
++            last_inbound_syn: None,
          })
      }
  
@@ -111,18 +141,68 @@
              TapInject::InboundTap(eth) => {
                  if let Err(e) = write_tap_raw(self.fd.get_ref(), self.vnet_hdr, &eth) {
                      self.delivery_drops.record("tap mdns prompt", &e);
-@@ -1358,9 +1421,36 @@
+                 }
+                 None
+             }
++            TapInject::PeerHardwareReady(mac) => {
++                let now = Instant::now();
++                let due = self
++                    .hw_query_last
++                    .get(&mac)
++                    .is_none_or(|t| now.duration_since(*t) >= Duration::from_secs(2));
++                if !due {
++                    return None;
++                }
++                self.hw_query_last.insert(mac, now);
++                println!("OWLY_T {} peer_hw_ready {}", epoch_ms(), mac);
++                Some(crate::ndp::build_airdrop_mdns_ptr_query(self.own, true))
++            }
+         }
+     }
+ 
+@@ -1358,9 +1455,73 @@ impl Tap {
          if let Err(msg) = res {
              self.rx_invalid.record("tap rx", &msg);
          }
-+        if !self.announce_done {
-+            if let Some(p) = self.pending_tx.iter().rev().find(|p| is_airdrop_mdns_multicast_response(&p.data)) {
++        for packet in &self.pending_tx {
++            if packet.dst.0[0] & 1 == 0
++                && packet.data.len() >= 48
++                && packet.data[0] >> 4 == 6
++                && (packet.data[6] == 6 || packet.data[6] == 17)
++            {
++                let is_tcp = packet.data[6] == 6;
++                let now = Instant::now();
++                let due = self.outbound_note.get(&packet.dst.0).is_none_or(|&(prev_tcp, t)| {
++                    (is_tcp && !prev_tcp)
++                        || now.duration_since(t) >= Duration::from_millis(500)
++                });
++                if due {
++                    self.outbound_note.insert(packet.dst.0, (is_tcp, now));
++                    crate::peer_ctl::note_peer_data(packet.dst, is_tcp);
++                }
++            }
++        }
++        if let Some(p) = self.pending_tx.iter().rev().find(|p| is_airdrop_mdns_multicast_response(&p.data)) {
++            let rearm_after_syn = self.announce_done
++                && self.last_inbound_syn.is_some_and(|t| t.elapsed() >= Duration::from_secs(5));
++            let rearm_after_expire = !self.announce_done
++                && self.announce_started
++                && self.announce_started_at.is_some_and(|t| t.elapsed() >= Duration::from_secs(30));
++            if rearm_after_syn || rearm_after_expire {
++                self.announce_done = false;
++                self.announce_started = false;
++                if let Some(task) = self.announce_task.take() {
++                    task.abort();
++                }
++            }
++            if !self.announce_done {
 +                self.announce = Some(Ipv6Packet { dst: p.dst, src: p.src, data: p.data.clone() });
 +                if !self.announce_started {
 +                    self.announce_started = true;
++                    self.announce_started_at = Some(Instant::now());
 +                    println!("OWLY_T {} responder_first_announce", epoch_ms());
 +                    let tx = self.inject_tx.clone();
-+                    tokio::spawn(async move {
++                    self.announce_task = Some(tokio::spawn(async move {
 +                        // every second for the first 12 s, then every 2 s up to 30 s after the first announcement
 +                        let gaps = std::iter::repeat(1_000u64).take(12).chain(std::iter::repeat(2_000u64).take(9));
 +                        for (i, g) in gaps.enumerate() {
@@ -131,7 +211,7 @@
 +                                return;
 +                            }
 +                        }
-+                    });
++                    }));
 +                }
 +            }
 +        }
@@ -139,16 +219,22 @@
      }
  
 +    fn note_inbound(&mut self, data: &[u8]) {
-+        if !self.announce_done && is_tcp_syn(data) {
-+            self.announce_done = true;
-+            println!("OWLY_T {} first_inbound_tcp_syn", epoch_ms());
++        if is_tcp_syn(data) {
++            self.last_inbound_syn = Some(Instant::now());
++            if !self.announce_done {
++                self.announce_done = true;
++                if let Some(task) = self.announce_task.take() {
++                    task.abort();
++                }
++                println!("OWLY_T {} first_inbound_tcp_syn", epoch_ms());
++            }
 +        }
 +    }
 +
      async fn recv(&mut self) -> io::Result<Ipv6Packet> {
          if let Some(packet) = self.pending_tx.pop_front() {
              return Ok(packet);
-@@ -1418,6 +1508,7 @@
+@@ -1418,6 +1579,7 @@ impl Tap {
      }
  
      fn deliver(&mut self, mut packet: Ipv6Packet) {
@@ -156,7 +242,7 @@
          crate::ndp::fanout_unicast_mdns_response(&mut packet, self.own);
          let hdr = packet.ethernet_header();
          if let Err(e) = write_tap_ethernet(self.fd.get_ref(), self.vnet_hdr, &hdr, &packet.data) {
-@@ -1426,6 +1517,7 @@
+@@ -1426,6 +1588,7 @@ impl Tap {
      }
  
      fn deliver_slice(&mut self, dst: MacAddr, src: MacAddr, data: &[u8]) {
@@ -164,7 +250,28 @@
          let (eff_dst, payload) =
              crate::ndp::maybe_fanout_mdns_slice(dst, data, self.own, &mut self.mdns_scratch);
          let hdr = owly_awdl::ip::ethernet_header_for(eff_dst, src, payload);
-@@ -1469,11 +1561,13 @@
+@@ -1446,8 +1609,10 @@ impl Tap {
+         if let Some(prev) = self.discovery_tasks.remove(&mac) {
+             prev.abort();
+         }
++        // Use QM (multicast response) on initial discovery so peers not yet in hardware REO
++        // reply via multicast and immediately satisfy the PeerGate.
+         let _ = self.inject_tx.send(TapInject::Outbound(
+-            crate::ndp::build_airdrop_mdns_ptr_query(self.own, true),
++            crate::ndp::build_airdrop_mdns_ptr_query(self.own, false),
+         ));
+         let tx = self.inject_tx.clone();
+         let own = self.own;
+@@ -1458,7 +1623,7 @@ impl Tap {
+             ));
+             tokio::time::sleep(Duration::from_millis(200)).await;
+             let _ = tx.send(TapInject::Outbound(
+-                crate::ndp::build_airdrop_mdns_ptr_query(own, true),
++                crate::ndp::build_airdrop_mdns_ptr_query(own, false),
+             ));
+             tokio::time::sleep(Duration::from_millis(650)).await;
+             let _ = tx.send(TapInject::InboundTap(
+@@ -1469,11 +1634,13 @@ impl Tap {
      }
  
      fn peer_up(&mut self, mac: MacAddr) {
@@ -178,7 +285,26 @@
          self.peer_sync.peer_up_caps(mac, caps);
          self.start_peer_discovery(mac);
      }
-@@ -1626,8 +1720,8 @@
+@@ -1486,6 +1653,8 @@ impl Tap {
+         if let Some(task) = self.discovery_tasks.remove(&mac) {
+             task.abort();
+         }
++        self.hw_query_last.remove(&mac);
++        self.outbound_note.remove(&mac.0);
+         self.peer_sync.peer_down(mac);
+         self.neigh.delete(mac);
+     }
+@@ -1493,6 +1662,9 @@ impl Tap {
+ 
+ impl Drop for Tap {
+     fn drop(&mut self) {
++        if let Some(task) = self.announce_task.take() {
++            task.abort();
++        }
+         for task in self.discovery_tasks.values() {
+             task.abort();
+         }
+@@ -1626,8 +1798,8 @@ fn outgoing_vht_profile(accept_addba: bool) -> io::Result<(u8, owly_awdl::VhtPro
      };
      if mode != 0 {
          let capacity =
@@ -189,7 +315,7 @@
          if capacity.trim() != "Y" || vht.trim() != "Y" {
              return Err(io::Error::other(
                  "outgoing VHT requires the tested RX capacity and VHT80 radio mode",
-@@ -1747,7 +1841,9 @@
+@@ -1747,7 +1919,9 @@ async fn run_inner(xos_only: bool, app_spawner: Option<AppSpawner>) -> io::Resul
      };
      let dynamic_peers = peer_sync.is_enabled();
      if dynamic_peers {
@@ -200,26 +326,16 @@
      }
  
      let mut terminate = signal(SignalKind::terminate())?;
-@@ -1812,3 +1908,16 @@
+@@ -1812,3 +1986,4 @@ async fn run_inner(xos_only: bool, app_spawner: Option<AppSpawner>) -> io::Resul
      if let Some(task) = app_task { task.abort(); }
      result
  }
 +
-+/// pandora peer gate: true if an AWDL data frame carries IPv6 TCP or UDP (AirDrop traffic), not ICMPv6
-+/// (owly keepalive pings and their replies, NDP), which every neighbour answers.
-+fn carries_tcp_udp(raw: &[u8]) -> bool {
-+    let lim = raw.len().min(96);
-+    for i in 24..lim.saturating_sub(10) {
-+        if raw[i] == 0x86 && raw[i + 1] == 0xdd && raw[i + 2] >> 4 == 6 {
-+            let nh = raw[i + 2 + 6];
-+            return nh == 6;
-+        }
-+    }
-+    false
-+}
+diff --git a/native/houji-runner/src/peer_ctl.rs b/native/houji-runner/src/peer_ctl.rs
+index c264f87..0c8299b 100644
 --- a/native/houji-runner/src/peer_ctl.rs
 +++ b/native/houji-runner/src/peer_ctl.rs
-@@ -8,8 +8,8 @@
+@@ -8,8 +8,8 @@ use std::sync::{Arc, Condvar, Mutex};
  use std::thread::{self, JoinHandle};
  use std::time::{Duration, Instant};
  
@@ -230,7 +346,15 @@
  const DEFAULT_RETRY_BACKOFF_MS: [u64; 5] = [25, 50, 100, 250, 500];
  const DEFAULT_EXHAUSTED_COOLDOWN_MS: u64 = 5_000;
  
-@@ -102,6 +102,7 @@
+@@ -76,6 +76,7 @@ impl SharedState {
+ struct SyncBus {
+     state: Mutex<SharedState>,
+     cv: Condvar,
++    on_peer_added: Mutex<Option<Arc<dyn Fn(MacAddr) + Send + Sync>>>,
+ }
+ 
+ trait CtlSink: Send + 'static {
+@@ -102,6 +103,7 @@ impl CtlSink for SysfsCtlSink {
  pub struct KernelPeerSync {
      bus: Option<Arc<SyncBus>>,
      worker: Option<JoinHandle<()>>,
@@ -238,7 +362,7 @@
  }
  
  impl KernelPeerSync {
-@@ -109,6 +110,7 @@
+@@ -109,6 +111,7 @@ impl KernelPeerSync {
          Self {
              bus: None,
              worker: None,
@@ -246,7 +370,7 @@
          }
      }
  
-@@ -129,9 +131,11 @@
+@@ -129,9 +132,11 @@ impl KernelPeerSync {
              return Self::disabled();
          }
          println!("OWLY_PT_PEER_CTL enabled=true");
@@ -260,7 +384,15 @@
      }
  
      fn spawn_with_sink<S: CtlSink>(sink: S) -> Self {
-@@ -174,6 +178,7 @@
+@@ -165,6 +170,7 @@ impl KernelPeerSync {
+                 cooldown_ms,
+             }),
+             cv: Condvar::new(),
++            on_peer_added: Mutex::new(None),
+         });
+         let worker_bus = Arc::clone(&bus);
+         let worker = thread::Builder::new()
+@@ -174,6 +180,7 @@ impl KernelPeerSync {
          Self {
              bus: Some(bus),
              worker: Some(worker),
@@ -268,7 +400,24 @@
          }
      }
  
-@@ -204,90 +209,36 @@
+@@ -181,6 +188,16 @@ impl KernelPeerSync {
+         self.bus.is_some()
+     }
+ 
++    #[cfg_attr(not(test), allow(dead_code))]
++    pub fn set_on_peer_added<F>(&self, f: F)
++    where
++        F: Fn(MacAddr) + Send + Sync + 'static,
++    {
++        if let Some(bus) = &self.bus {
++            *bus.on_peer_added.lock().unwrap() = Some(Arc::new(f));
++        }
++    }
++
+     #[cfg_attr(not(test), allow(dead_code))]
+     pub fn is_peer_ready(&self, mac: MacAddr) -> bool {
+         let Some(bus) = &self.bus else {
+@@ -204,90 +221,36 @@ impl KernelPeerSync {
      }
  
      pub fn peer_caps(&self, mac: MacAddr, caps: PeerCaps) {
@@ -378,7 +527,17 @@
      #[cfg(test)]
      fn wait_until_idle(&self) {
          let Some(bus) = &self.bus else {
-@@ -343,6 +294,8 @@
+@@ -302,6 +265,9 @@ impl KernelPeerSync {
+ 
+ impl Drop for KernelPeerSync {
+     fn drop(&mut self) {
++        if let Some(gate) = self.gate.take() {
++            gate.shutdown();
++        }
+         if let Some(bus) = self.bus.take() {
+             let mut guard = bus.state.lock().unwrap();
+             guard.shutdown = true;
+@@ -343,6 +309,8 @@ fn next_due_peer(state: &SharedState, now: Instant) -> Option<(MacAddr, bool, Op
  }
  
  fn format_add_cmd(mac: MacAddr, caps: Option<PeerCaps>) -> String {
@@ -387,10 +546,115 @@
      match caps {
          Some(c) => format!(
              "add {mac} ht={} vht={} nss={} bw={} mcs={} sgi={} ldpc={} ht_bw40={} ht_sgi20={} ht_sgi40={} ht_ldpc={} vht_sgi80={} vht_ldpc={} max_mpdu={} ampdu_exp={} mpdu_density={} ht_mcs={}\n",
-@@ -896,3 +849,287 @@
+@@ -447,11 +415,15 @@ fn worker_loop<S: CtlSink>(bus: Arc<SyncBus>, mut sink: S) {
+         };
+         let res = sink.write_cmd(&cmd);
+ 
++        let mut notify_mac = None;
+         let mut guard = bus.state.lock().unwrap();
+         guard.in_flight = None;
+         let cooldown_ms = guard.cooldown_ms;
+         match res {
+             Ok(()) => {
++                if want_add {
++                    notify_mac = Some(mac);
++                }
+                 if let Some(entry) = guard.peers.get_mut(&mac) {
+                     if want_add {
+                         entry.applied = AppliedState::Present;
+@@ -526,6 +498,13 @@ fn worker_loop<S: CtlSink>(bus: Arc<SyncBus>, mut sink: S) {
+             }
+         }
+         bus.cv.notify_all();
++        drop(guard);
++        if let Some(added_mac) = notify_mac {
++            let cb = bus.on_peer_added.lock().unwrap().clone();
++            if let Some(f) = cb {
++                f(added_mac);
++            }
++        }
+     }
+ 
+     let active_on_shutdown = {
+@@ -895,4 +874,490 @@ mod tests {
+         drop(sync);
          assert_eq!(log.lock().unwrap().len(), 8); // 6 failed + 1 recovered add + 1 clear
      }
- }
++
++    #[test]
++    fn test_carries_airdrop_unicast() {
++        let build = |nh: u8, sport: u16, dport: u16, payload: &[u8]| {
++            let mut f = vec![0u8; 24 + 8 + 40 + 8 + payload.len()];
++            f[0] = 0x88;
++            f[30] = 0x86;
++            f[31] = 0xdd;
++            let ip = 32;
++            f[ip] = 0x60;
++            f[ip + 6] = nh;
++            if nh == 17 {
++                f[ip + 40..ip + 42].copy_from_slice(&sport.to_be_bytes());
++                f[ip + 42..ip + 44].copy_from_slice(&dport.to_be_bytes());
++            }
++            f[ip + 48..].copy_from_slice(payload);
++            f
++        };
++        assert_eq!(carries_airdrop_unicast(&build(6, 0, 8770, b"")), Some(true));
++        assert_eq!(carries_airdrop_unicast(&build(17, 5353, 5353, b"_airdrop._tcp")), Some(false));
++        assert_eq!(carries_airdrop_unicast(&build(17, 5353, 5353, b"_other._tcp")), None);
++        assert_eq!(carries_airdrop_unicast(&build(17, 9999, 8888, b"_airdrop._tcp")), None);
++        assert_eq!(carries_airdrop_unicast(&build(58, 0, 0, b"_airdrop")), None);
++    }
++
++    #[test]
++    fn test_peer_ctl_on_peer_added_callback() {
++        let log = Arc::new(Mutex::new(Vec::new()));
++        let added = Arc::new(Mutex::new(Vec::new()));
++        let sync = KernelPeerSync::spawn_with_sink(VecSink(Arc::clone(&log)));
++        let added_ref = Arc::clone(&added);
++        sync.set_on_peer_added(move |mac| added_ref.lock().unwrap().push(mac));
++
++        let m1 = MacAddr([0x02, 0x11, 0x22, 0x33, 0x44, 0x71]);
++        sync.peer_up(m1);
++        sync.wait_until_idle();
++        sync.peer_down(m1);
++        sync.wait_until_idle();
++        drop(sync);
++
++        assert_eq!(*added.lock().unwrap(), vec![m1]);
++    }
++
++    #[test]
++    fn test_peer_gate_pending_retry_after_spacing() {
++        let log = Arc::new(Mutex::new(Vec::new()));
++        let sync = KernelPeerSync::spawn_with_sink(VecSink(Arc::clone(&log)));
++        let bus = Arc::clone(sync.bus.as_ref().unwrap());
++        let gate = PeerGate::new_with_timings(
++            &bus,
++            6,
++            Duration::from_millis(80),
++            Duration::from_millis(40),
++        );
++
++        let m1 = MacAddr([0x02, 0xaa, 0xbb, 0xcc, 0xdd, 0x01]);
++        let m2 = MacAddr([0x02, 0xaa, 0xbb, 0xcc, 0xdd, 0x02]);
++        gate.up(m1, None);
++        gate.up(m2, None);
++        gate.data(m1, false);
++        // Immediately hitting m2 within op_spacing defers m2 to pending retry without a second data().
++        gate.data(m2, false);
++
++        thread::sleep(Duration::from_millis(120));
++        sync.wait_until_idle();
++        gate.shutdown();
++        drop(sync);
++
++        let recorded = log.lock().unwrap().clone();
++        assert!(recorded.contains(&"add 02:aa:bb:cc:dd:01
++".to_string()));
++        assert!(recorded.contains(&"add 02:aa:bb:cc:dd:02
++".to_string()));
++    }
++}
 +
 +fn raw_peer_caps(bus: &Arc<SyncBus>, mac: MacAddr, caps: PeerCaps) {
 +        let mut guard = bus.state.lock().unwrap();
@@ -483,6 +747,7 @@
 +const GATE_LINGER: Duration = Duration::from_secs(30);
 +const GATE_READD_COOLDOWN: Duration = Duration::from_secs(5);
 +const GATE_OP_SPACING: Duration = Duration::from_millis(300);
++const GATE_PENDING_MAX: usize = 16;
 +
 +static GATE: std::sync::OnceLock<Arc<PeerGate>> = std::sync::OnceLock::new();
 +
@@ -492,9 +757,11 @@
 +    unicast: std::collections::HashMap<MacAddr, Instant>,
 +    lingering: std::collections::HashMap<MacAddr, Instant>,
 +    released: std::collections::HashMap<MacAddr, Instant>,
++    pending: BTreeMap<MacAddr, (bool, Instant)>,
 +    last_op: Option<Instant>,
 +    admitted: Vec<MacAddr>,
 +    full_logged: Option<Instant>,
++    shutdown: bool,
 +}
 +
 +impl GateState {
@@ -506,10 +773,49 @@
 +pub struct PeerGate {
 +    bus: Arc<SyncBus>,
 +    max: usize,
++    readd_cooldown: Duration,
++    op_spacing: Duration,
 +    state: Mutex<GateState>,
++    cv: Condvar,
++    retry_worker: Mutex<Option<JoinHandle<()>>>,
 +}
 +
 +impl PeerGate {
++    fn new_with_timings(
++        bus: &Arc<SyncBus>,
++        max: usize,
++        readd_cooldown: Duration,
++        op_spacing: Duration,
++    ) -> Arc<PeerGate> {
++        let gate = Arc::new(PeerGate {
++            bus: Arc::clone(bus),
++            max,
++            readd_cooldown,
++            op_spacing,
++            state: Mutex::new(GateState {
++                candidates: std::collections::HashMap::new(),
++                active: std::collections::HashMap::new(),
++                unicast: std::collections::HashMap::new(),
++                lingering: std::collections::HashMap::new(),
++                released: std::collections::HashMap::new(),
++                pending: BTreeMap::new(),
++                last_op: None,
++                admitted: Vec::new(),
++                full_logged: None,
++                shutdown: false,
++            }),
++            cv: Condvar::new(),
++            retry_worker: Mutex::new(None),
++        });
++        let retry_gate = Arc::clone(&gate);
++        let handle = thread::Builder::new()
++            .name("owly-peer-gate-retry".to_string())
++            .spawn(move || Self::retry_loop(retry_gate))
++            .expect("spawn owly-peer-gate-retry thread");
++        *gate.retry_worker.lock().unwrap() = Some(handle);
++        gate
++    }
++
 +    fn install(bus: &Arc<SyncBus>) -> Option<Arc<PeerGate>> {
 +        if std::env::var("OWLY_PEER_GATE").is_ok_and(|v| v == "0") {
 +            println!("OWLY_PEER_GATE enabled=false");
@@ -520,23 +826,58 @@
 +            .and_then(|v| v.parse::<usize>().ok())
 +            .unwrap_or(6)
 +            .clamp(1, 8);
-+        let gate = Arc::new(PeerGate {
-+            bus: Arc::clone(bus),
-+            max,
-+            state: Mutex::new(GateState {
-+                candidates: std::collections::HashMap::new(),
-+                active: std::collections::HashMap::new(),
-+                unicast: std::collections::HashMap::new(),
-+                lingering: std::collections::HashMap::new(),
-+                released: std::collections::HashMap::new(),
-+                last_op: None,
-+                admitted: Vec::new(),
-+                full_logged: None,
-+            }),
-+        });
++        let gate = Self::new_with_timings(bus, max, GATE_READD_COOLDOWN, GATE_OP_SPACING);
 +        let _ = GATE.set(Arc::clone(&gate));
 +        println!("OWLY_PEER_GATE enabled=true max={max} linger_s=30");
 +        Some(gate)
++    }
++
++    fn shutdown(&self) {
++        {
++            let mut st = self.state.lock().unwrap();
++            st.shutdown = true;
++            self.cv.notify_all();
++        }
++        if let Some(handle) = self.retry_worker.lock().unwrap().take() {
++            let _ = handle.join();
++        }
++    }
++
++    fn retry_loop(gate: Arc<PeerGate>) {
++        let mut st = gate.state.lock().unwrap();
++        loop {
++            if st.shutdown {
++                break;
++            }
++            let mut pending = std::mem::take(&mut st.pending);
++            pending.retain(|m, _| st.candidates.contains_key(m) && !st.admitted.contains(m));
++            st.pending = pending;
++            let now = Instant::now();
++            let due = st
++                .pending
++                .iter()
++                .filter(|(_, (_, at))| *at <= now)
++                .min_by_key(|(_, (_, at))| *at)
++                .map(|(&m, &(uni, _))| (m, uni));
++            if let Some((mac, uni)) = due {
++                st.pending.remove(&mac);
++                gate.sweep(&mut st);
++                gate.try_admit(&mut st, mac, uni);
++                continue;
++            }
++            let next_at = st.pending.values().map(|(_, at)| *at).min();
++            st = match next_at {
++                Some(deadline) => {
++                    let wait = deadline.saturating_duration_since(now);
++                    if wait.is_zero() {
++                        st
++                    } else {
++                        gate.cv.wait_timeout(st, wait).unwrap().0
++                    }
++                }
++                None => gate.cv.wait(st).unwrap(),
++            };
++        }
 +    }
 +
 +    fn release(&self, st: &mut GateState, mac: MacAddr, why: &str) {
@@ -590,6 +931,7 @@
 +    fn down(&self, mac: MacAddr) {
 +        let mut st = self.state.lock().unwrap();
 +        st.candidates.remove(&mac);
++        st.pending.remove(&mac);
 +        if !st.admitted.contains(&mac) {
 +            st.active.remove(&mac);
 +            st.unicast.remove(&mac);
@@ -619,13 +961,32 @@
 +        self.try_admit(&mut st, mac, unicast);
 +    }
 +
-+    fn try_admit(&self, st: &mut GateState, mac: MacAddr, unicast: bool) {
-+        st.released.retain(|_, t| t.elapsed() < GATE_READD_COOLDOWN);
-+        if st.released.contains_key(&mac) {
-+            return; // its previous driver peer may still be tearing down
++    fn schedule_pending(&self, st: &mut GateState, mac: MacAddr, unicast: bool, retry_at: Instant) {
++        if let Some((prev_uni, prev_at)) = st.pending.get_mut(&mac) {
++            *prev_uni |= unicast;
++            *prev_at = (*prev_at).max(retry_at);
++            self.cv.notify_all();
++            return;
 +        }
-+        if st.last_op.is_some_and(|t| t.elapsed() < GATE_OP_SPACING) {
-+            return; // retried on the next data frame (throttled to 500 ms per MAC)
++        if st.pending.len() < GATE_PENDING_MAX {
++            st.pending.insert(mac, (unicast, retry_at));
++            self.cv.notify_all();
++        }
++    }
++
++    fn try_admit(&self, st: &mut GateState, mac: MacAddr, unicast: bool) {
++        let now = Instant::now();
++        let readd_cooldown = self.readd_cooldown;
++        st.released.retain(|_, t| now.saturating_duration_since(*t) < readd_cooldown);
++        let cooldown_until = st.released.get(&mac).map(|t| *t + self.readd_cooldown);
++        let spacing_until = st
++            .last_op
++            .map(|t| t + self.op_spacing)
++            .filter(|&deadline| deadline > now);
++        if cooldown_until.is_some() || spacing_until.is_some() {
++            let retry_at = [cooldown_until, spacing_until].into_iter().flatten().max().unwrap();
++            self.schedule_pending(st, mac, unicast, retry_at);
++            return;
 +        }
 +        if st.admitted.len() >= self.max {
 +            let now = Instant::now();
@@ -662,6 +1023,7 @@
 +            }
 +        }
 +        let caps = st.candidates.get(&mac).copied().flatten();
++        st.pending.remove(&mac);
 +        st.admitted.push(mac);
 +        st.last_op = Some(Instant::now());
 +        raw_set_peer_up(&self.bus, mac, caps);
@@ -675,3 +1037,33 @@
 +        g.data(mac, unicast);
 +    }
 +}
++
++/// Inspect a raw 802.11 AWDL data frame addressed to us:
++/// returns `Some(true)` for IPv6 TCP, `Some(false)` for IPv6 UDP port 5353 containing `_airdrop`,
++/// and `None` otherwise (such as ICMPv6 keepalive pings or unrelated UDP).
++pub(crate) fn carries_airdrop_unicast(raw: &[u8]) -> Option<bool> {
++    let lim = raw.len().min(96);
++    for i in 24..lim.saturating_sub(10) {
++        if raw[i] == 0x86 && raw[i + 1] == 0xdd && raw[i + 2] >> 4 == 6 {
++            let ip = &raw[i + 2..];
++            if ip.len() < 40 {
++                return None;
++            }
++            let nh = ip[6];
++            if nh == 6 {
++                return Some(true);
++            }
++            if nh == 17 && ip.len() >= 48 {
++                let sport = u16::from_be_bytes([ip[40], ip[41]]);
++                let dport = u16::from_be_bytes([ip[42], ip[43]]);
++                if (sport == 5353 || dport == 5353)
++                    && ip[48..].windows(8).any(|w| w == b"_airdrop")
++                {
++                    return Some(false);
++                }
++            }
++            return None;
++        }
++    }
++    None
+ }

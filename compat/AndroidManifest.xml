@@ -1,12 +1,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="org.pandora.xoscompat"
-    android:versionCode="1"
-    android:versionName="0.1.0">
+    android:versionCode="2"
+    android:versionName="0.2.0">
     <uses-sdk android:minSdkVersion="33" android:targetSdkVersion="36" />
     <application android:allowBackup="false" android:label="Pandora XOS 小米互传兼容">
         <meta-data android:name="xposedmodule" android:value="true" />
         <meta-data android:name="xposeddescription"
-            android:value="小米 17 Pro AirDrop：独占无线电期间对小米互传隐藏 Wi-Fi 关闭，避免会话被中断；修复相册分享跳转。" />
+            android:value="小米 17 系列 / K90 Pro Max 原生 AirDrop：独占无线期间对小米互传隐藏 Wi-Fi 关闭、修复 mDNS 出站网卡与相册分享跳转。" />
         <meta-data android:name="xposedminversion" android:value="82" />
         <meta-data android:name="xposedscope" android:resource="@array/xposed_scope" />
     </application>

@@ -7,7 +7,7 @@ SKIPUNZIP=0
 touch "$MODPATH/skip_mount"
 
 ui_print "=========================================="
-ui_print "  小米 17 / 17 Pro 原生 AirDrop"
+ui_print "  小米 17 系列 / K90 Pro Max 原生 AirDrop"
 ui_print "  $(grep '^version=' "$MODPATH/module.prop" | cut -d= -f2)  不修改任何系统分区"
 ui_print "=========================================="
 
@@ -22,7 +22,7 @@ ui_print "- 系统: HyperOS $os (SDK $sdk)"
 ui_print "- 内核: $kernel"
 
 case " $SUPPORTED_DEVICES " in *" $device "*) ;; *)
- abort "! 仅支持小米 17 Pro (pandora) 和小米 17 (pudding)，当前为 $device" ;;
+ abort "! 仅支持小米 17 系列 (pandora/pudding/popsicle) 和 REDMI K90 Pro Max (myron)，当前为 $device" ;;
 esac
 [ "$sdk" = "$EXPECTED_SDK" ] || abort "! 需要 Android 17 (SDK $EXPECTED_SDK)，当前为 SDK $sdk"
 if ! kernel_ok "$kernel"; then
@@ -53,21 +53,35 @@ if [ ! -d /data/adb/modules/zygisk_lsposed ] && [ ! -d /data/adb/lspd ]; then
 fi
 
 if [ ! -f "$MODPATH/payload/$S26U_FW_REL" ]; then
- ui_print "- 安装包不含三星固件，正在手机上查找 amss20.bin ..."
+ ui_print "- 安装包不含三星固件，正在手机上查找已缓存的 amss20.bin ..."
  fw=
  for f in $S26U_FW_SEARCH; do
   if [ -f "$f" ] && [ "$(sha_of "$f")" = "$S26U_FW_SHA" ]; then fw=$f; break; fi
  done
- if [ -z "$fw" ]; then
-  ui_print "! 没找到三星 S26 Ultra 的 WLAN 固件。请把 amss20.bin"
-  ui_print "  （SM-S948B S948BXXS6BZK1，SHA-256 以 71fc5c2e 开头）"
-  ui_print "  放到 /sdcard/Download/s26u-amss20.bin 后重新安装。"
-  ui_print "  获取方法见项目 firmware/README.md。"
-  abort "! 已中止，手机未做任何改动"
- fi
- ui_print "  使用 $fw"
  mkdir -p "$MODPATH/payload/firmware"
- cp "$fw" "$MODPATH/payload/$S26U_FW_REL" || abort "! 复制固件失败"
+ if [ -n "$fw" ]; then
+  ui_print "  使用本地缓存: $fw"
+  cp "$fw" "$MODPATH/payload/$S26U_FW_REL" || abort "! 复制固件失败"
+ else
+  ui_print "- 本地未缓存固件，正在通过手机直连三星官方服务器获取（约 5.2 MB）..."
+  ui_print "  无需电脑，请保持手机联网，预计耗时 5~15 秒..."
+  fetch_log="$MODPATH/payload/firmware/.fetch.log"
+  if [ -f "$MODPATH/tools/fw-fetcher.zip" ] && [ -f "$MODPATH/tools/S948BXXS6BZK1.json" ]; then
+   CLASSPATH="$MODPATH/tools/fw-fetcher.zip" /system/bin/app_process /system/bin FwFetcher \
+    "$MODPATH/tools/S948BXXS6BZK1.json" "$MODPATH/payload/$S26U_FW_REL" >"$fetch_log" 2>&1 || true
+   while IFS= read -r line; do ui_print "  $line"; done < "$fetch_log"
+   rm -f "$fetch_log"
+  fi
+  if [ ! -f "$MODPATH/payload/$S26U_FW_REL" ] || [ "$(sha_of "$MODPATH/payload/$S26U_FW_REL")" != "$S26U_FW_SHA" ]; then
+   rm -f "$MODPATH/payload/$S26U_FW_REL"
+   ui_print "! 手机自动获取三星 S26U 固件失败（请检查网络/代理后重试）。"
+   ui_print "  也可在电脑运行 firmware/get_amss20.py --push 手动推送到"
+   ui_print "  /sdcard/Download/s26u-amss20.bin 后重新安装。"
+   abort "! 已中止，手机未做任何改动"
+  fi
+  cp "$MODPATH/payload/$S26U_FW_REL" /sdcard/Download/s26u-amss20.bin 2>/dev/null || true
+  ui_print "  已自动缓存到 /sdcard/Download/s26u-amss20.bin，下次升级免重复下载"
+ fi
 fi
 
 ui_print "- 校验模块文件..."
@@ -100,13 +114,24 @@ else
  stage=/data/local/tmp/pandora-airdrop-compat.apk
  cp "$apk" "$stage" && chmod 644 "$stage"
  out=$(pm install -r "$stage" 2>&1)
- rm -f "$stage"
  case "$out" in
   *Success*) ui_print "  安装成功" ;;
   *INSTALL_FAILED_UPDATE_INCOMPATIBLE*)
-   abort "! 已装有不同签名的 $COMPAT_PKG，请先卸载它再安装本模块" ;;
-  *) ui_print "  $out"; abort "! 兼容模块安装失败" ;;
+   ui_print "  兼容模块签名证书已更新，正在自动卸载旧版并重新安装..."
+   pm uninstall "$COMPAT_PKG" >/dev/null 2>&1 || true
+   out2=$(pm install "$stage" 2>&1)
+   case "$out2" in
+    *Success*)
+     ui_print "  重新安装成功（因签名更换，安装后需在 LSPosed 中重新勾选启用一次）"
+     first=1 ;;
+    *)
+     rm -f "$stage"
+     ui_print "  $out2"
+     abort "! 兼容模块重新安装失败" ;;
+   esac ;;
+  *) rm -f "$stage"; ui_print "  $out"; abort "! 兼容模块安装失败" ;;
  esac
+ rm -f "$stage"
  am force-stop "$MISHARE_PKG" >/dev/null 2>&1 || true
 fi
 

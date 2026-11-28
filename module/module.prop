@@ -1,6 +1,6 @@
 id=pandora_airdrop
-name=小米 17 / 17 Pro 原生 AirDrop
-version=v1.2.0
-versionCode=12000
+name=小米 17 系列 / K90 Pro Max 原生 AirDrop
+version=v1.3.0
+versionCode=13000
 author=AdenXie
-description=小米 17 / 17 Pro 原生 AirDrop：iPhone 隔空投送到小米互传，Live Photo 合成动态照片。不修改系统分区。
+description=小米 17 系列 / K90 Pro Max 原生 AirDrop：iPhone 隔空投送双向互传，Live Photo 合成动态照片。不修改系统分区。

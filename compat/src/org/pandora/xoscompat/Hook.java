@@ -12,6 +12,11 @@ import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 import java.lang.reflect.Method;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.MulticastSocket;
+import java.net.NetworkInterface;
+import java.net.SocketAddress;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -60,6 +65,11 @@ public final class Hook implements IXposedHookLoadPackage {
         if (MISHARE_PKG.equals(p.packageName)) {
             hookMiShare();
             try {
+                hookMdnsOutbound();
+            } catch (Throwable t) {
+                Log.w(TAG, "mDNS outbound interface hook unavailable", t);
+            }
+            try {
                 hookSkipStaHandoff(p.classLoader);
             } catch (Throwable t) {
                 Log.i(TAG, "STA handoff hook not applied (" + t + ")");
@@ -76,6 +86,34 @@ public final class Hook implements IXposedHookLoadPackage {
                 Log.w(TAG, "IntentResolver gallery hook unavailable", t);
             }
         }
+    }
+
+    // Fix mDNS outbound interface on xos0: joinGroup() only subscribes RX; without setNetworkInterface()
+    // + TTL=255, outbound IPv6 multicast queries (ff02::fb:5353) can be routed away (e.g. to tun0/rmnet).
+    private static void hookMdnsOutbound() throws Throwable {
+        XposedBridge.hookMethod(
+                MulticastSocket.class.getDeclaredMethod("joinGroup", SocketAddress.class, NetworkInterface.class),
+                new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        if (!(param.args[0] instanceof InetSocketAddress)
+                                || !(param.args[1] instanceof NetworkInterface)) {
+                            return;
+                        }
+                        InetSocketAddress group = (InetSocketAddress) param.args[0];
+                        NetworkInterface nic = (NetworkInterface) param.args[1];
+                        MulticastSocket socket = (MulticastSocket) param.thisObject;
+                        if (group.getPort() != 5353 || !"xos0".equals(nic.getName())) return;
+                        try {
+                            if (!InetAddress.getByName("ff02::fb").equals(group.getAddress())) return;
+                            socket.setNetworkInterface(nic);
+                            socket.setTimeToLive(255);
+                            Log.i(TAG, "MDNS_XOS_OUTBOUND_INTERFACE_FIXED localPort=" + socket.getLocalPort() + " hop=255");
+                        } catch (Throwable t) {
+                            Log.w(TAG, "MDNS_XOS_BIND_FAILED", t);
+                        }
+                    }
+                });
     }
 
     private void hookMiShare() throws Throwable {
